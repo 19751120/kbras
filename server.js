@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 const INDEX_PATH = path.join(__dirname, 'public', 'index.html');
 
 const K = Number(process.env.TIME_SCALE) || 1; // solo para pruebas
-const SPIN_MS = 4500 * K, TURN_MS = 10000 * K, SOLD_MS = 5000 * K, PRE_MS = 3000 * K, PRED_MS = 60000 * K, RATE_PER = 10000 * K;
+const SPIN_MS = 4500 * K, SOLD_MS = 5000 * K, PRE_MS = 3000 * K, VOTE_PER_TEAM_MS = 20000 * K, VOTE_MIN_MS = 60000 * K;
 const HOST_HANDOVER_MS = 20000 * K;          // si el anfitrión se va 20 s, otro hereda los botones
 const GAME_IDLE_MS = 3 * 60 * 60 * 1000; // partidas sin nadie conectado se borran a las 3 h
 
@@ -28,7 +28,7 @@ function genCode() {
 class Game {
   constructor(hostName, cid) {
     this.code = genCode();
-    this.priv = { ratings: {}, notes: {}, preds: {} };
+    this.priv = { votes: {} };
     this.cids = {};            // id de jugador -> token secreto del dispositivo (nunca se envía)
     this.sockets = new Set();
     this.lastActive = Date.now();
@@ -36,13 +36,14 @@ class Game {
     this.cids[hid] = cid;
     this.st = {
       phase: 'lobby', code: this.code, round: 1, paused: false, pausedAt: 0, hostId: hid,
-      config: { people: [], teamSize: 3, goats: 21 },
+      config: { people: [], teamSize: 3, goats: 21, turnSecs: 20 },
       players: [this.newPlayer(hid, hostName)],
-      order: [], openerIdx: 0, ratingEndsAt: 0, predictEndsAt: 0, auction: null, history: [], results: null, warn: null, excluded: 0
+      order: [], openerIdx: 0, voteEndsAt: 0, auction: null, history: [], results: null, warn: null
     };
     games.set(this.code, this);
   }
-  newPlayer(id, name) { return { id, name, connected: true, discAt: 0, goats: 0, team: [], ratedDone: false, predDone: false }; }
+  newPlayer(id, name) { return { id, name, connected: true, discAt: 0, goats: 0, team: [], voteDone: false }; }
+  turnMs() { return this.st.config.turnSecs * 1000 * K; }
   P(id) { return this.st.players.find(p => p.id === id); }
   holes(p) { return this.st.config.teamSize - p.team.length; }
   maxBid(p) { return this.holes(p) > 0 ? p.goats - (this.holes(p) - 1) : p.goats; }
@@ -114,26 +115,23 @@ class Game {
         st.config = {
           people,
           teamSize: Math.max(1, Math.min(10, parseInt(m.teamSize) || 1)),
-          goats: Math.max(1, Math.min(999, parseInt(m.goats) || 1))
+          goats: Math.max(1, Math.min(999, parseInt(m.goats) || 1)),
+          turnSecs: Math.max(5, Math.min(120, parseInt(m.turnSecs) || 20))
         };
         return this.broadcast();
       }
       case 'host': if (isHost) this.hostAction(m.act); return;
-      case 'rate': {
-        if (st.phase !== 'rating' || p.ratedDone) return;
-        const r = {}; const src = m.r || {};
-        for (const n of st.config.people) { const v = src[n]; if (typeof v === 'number' && v >= 0 && v <= 10) r[n] = Math.round(v); }
-        this.priv.ratings[pid] = r;
-        if (m.done) { p.ratedDone = true; if (!this.checkAllDone()) this.broadcast(); }
-        return;
-      }
       case 'bid': if (!st.paused) this.placeBid(pid, Number(m.amount)); return;
       case 'withdraw': if (!st.paused) this.withdraw(pid); return;
-      case 'pred': {
-        if (st.phase !== 'predict' || p.predDone) return;
+      case 'vote': {
+        if (st.phase !== 'vote' || p.voteDone) return;
         const g = {}; const src = m.g || {};
-        for (const q of st.players) { if (q.id === pid || !q.team.length) continue; const v = Number(src[q.id]); g[q.id] = isFinite(v) ? Math.min(10, Math.max(0, Math.round(v * 10) / 10)) : 5; }
-        this.priv.preds[pid] = g; p.predDone = true;
+        for (const q of st.players) {
+          if (q.id === pid || !q.team.length) continue;
+          const v = Number(src[q.id]);
+          if (src[q.id] !== null && src[q.id] !== undefined && isFinite(v) && v >= 0 && v <= 10) g[q.id] = Math.round(v);
+        }
+        this.priv.votes[pid] = g; p.voteDone = true;
         if (!this.checkAllDone()) this.broadcast();
         return;
       }
@@ -144,27 +142,26 @@ class Game {
   checkAllDone() {
     const st = this.st, on = st.players.filter(x => x.connected);
     if (!on.length || st.paused) return false;
-    if (st.phase === 'rating' && on.every(x => x.ratedDone)) { this.endRating(); return true; }
-    if (st.phase === 'predict' && on.every(x => x.predDone)) { this.endPredict(); return true; }
+    if (st.phase === 'vote' && on.every(x => x.voteDone)) { this.endVote(); return true; }
     return false;
   }
   hostAction(act) {
     const st = this.st;
     if (act === 'pause') {
-      if (!['rating', 'auction', 'predict'].includes(st.phase)) return;
+      if (!['auction', 'vote'].includes(st.phase)) return;
       if (!st.paused) { st.paused = true; st.pausedAt = Date.now(); }
-      else { const d = Date.now() - st.pausedAt; st.ratingEndsAt += d; st.predictEndsAt += d; if (st.auction) st.auction.deadline += d; if (st.auction && st.auction.spin) st.auction.spin.endsAt += d; st.paused = false; }
+      else { const d = Date.now() - st.pausedAt; st.voteEndsAt += d; if (st.auction) st.auction.deadline += d; if (st.auction && st.auction.spin) st.auction.spin.endsAt += d; st.paused = false; }
       this.broadcast();
     } else if (act === 'start') {
       if (st.phase !== 'lobby') return;
       st.players = st.players.filter(p => p.connected);
       if (!this.lobbyOk()) return this.broadcast();
-      this.startRating();
+      this.startAuction();
     } else if (act === 'new-game') {
       if (st.phase !== 'results') return;
       st.round++; st.players = st.players.filter(p => p.connected);
       if (!this.lobbyOk()) { this.toLobby(); return; }
-      this.startRating();
+      this.startAuction();
     } else if (act === 'to-lobby') {
       if (st.phase !== 'results') return;
       this.toLobby();
@@ -174,7 +171,7 @@ class Game {
     const st = this.st;
     st.round++; st.phase = 'lobby'; st.results = null; st.auction = null; st.history = []; st.paused = false;
     st.players = st.players.filter(p => p.connected);
-    st.players.forEach(p => { p.team = []; p.goats = 0; p.ratedDone = false; p.predDone = false; });
+    st.players.forEach(p => { p.team = []; p.goats = 0; p.voteDone = false; });
     this.broadcast();
   }
   lobbyOk() {
@@ -183,26 +180,14 @@ class Game {
   }
 
   // ---------- fases ----------
-  startRating() {
+  startAuction() {
     const st = this.st, c = st.config;
-    st.players.forEach(p => { p.goats = c.goats; p.team = []; p.ratedDone = false; p.predDone = false; });
-    this.priv = { ratings: {}, notes: {}, preds: {} };
-    st.history = []; st.results = null; st.auction = null; st.warn = null; st.paused = false;
-    st.phase = 'rating'; st.ratingEndsAt = Date.now() + c.people.length * RATE_PER;
+    st.players.forEach(p => { p.goats = c.goats; p.team = []; p.voteDone = false; });
+    this.priv = { votes: {} };
+    st.history = []; st.results = null; st.warn = null; st.paused = false;
     st.order = shuffle(st.players.map(p => p.id)); st.openerIdx = 0;
-    this.broadcast();
-  }
-  endRating() {
-    const st = this.st, notes = {};
-    for (const n of st.config.people) {
-      const vals = Object.values(this.priv.ratings).map(r => r[n]).filter(v => typeof v === 'number');
-      if (vals.length) notes[n] = avg(vals);
-    }
-    this.priv.notes = notes;
-    const wheel = st.config.people.filter(n => notes[n] != null);
-    st.excluded = st.config.people.length - wheel.length;
     st.phase = 'auction';
-    st.auction = { wheel, stage: 'pre', deadline: Date.now() + PRE_MS, spin: null, lot: null, bid: 0, leader: null, turn: null, opener: null, withdrawn: [], last: null };
+    st.auction = { wheel: c.people.slice(), stage: 'pre', deadline: Date.now() + PRE_MS, spin: null, lot: null, bid: 0, leader: null, turn: null, opener: null, withdrawn: [], last: null };
     this.broadcast();
   }
   tick(t) {
@@ -212,8 +197,7 @@ class Game {
       if (h && !h.connected && h.discAt && t - h.discAt > HOST_HANDOVER_MS && st.players.some(p => p.connected)) { this.handOver(); this.broadcast(); }
     }
     if (st.paused) return;
-    if (st.phase === 'rating' && t >= st.ratingEndsAt) this.endRating();
-    else if (st.phase === 'predict' && t >= st.predictEndsAt) this.endPredict();
+    if (st.phase === 'vote' && t >= st.voteEndsAt) this.endVote();
     else if (st.phase === 'auction') {
       const a = st.auction; if (t < a.deadline) return;
       if (a.stage === 'pre' || a.stage === 'sold') this.nextLot();
@@ -239,7 +223,7 @@ class Game {
       if (p && p.team.length < st.config.teamSize) { opener = id; st.openerIdx = (st.openerIdx + k + 1) % n; break; }
     }
     if (!opener) return this.endAuction();
-    Object.assign(a, { stage: 'bidding', opener, turn: opener, deadline: Date.now() + TURN_MS });
+    Object.assign(a, { stage: 'bidding', opener, turn: opener, deadline: Date.now() + this.turnMs() });
     if (!this.P(opener).connected) return this.forceBid(opener, 1);
     this.broadcast();
   }
@@ -269,7 +253,7 @@ class Game {
       if (id === a.leader || a.withdrawn.includes(id)) continue;
       const p = this.P(id);
       if (!p || this.maxBid(p) <= a.bid || !p.connected) { a.withdrawn.push(id); continue; }
-      a.turn = id; a.deadline = Date.now() + TURN_MS; this.broadcast(); return;
+      a.turn = id; a.deadline = Date.now() + this.turnMs(); this.broadcast(); return;
     }
     this.sell();
   }
@@ -287,27 +271,19 @@ class Game {
     const st = this.st;
     const inc = st.players.filter(p => p.team.length < st.config.teamSize);
     st.warn = inc.length ? `Se acabaron las personas de la ruleta y no han completado su equipo: ${inc.map(p => p.name).join(', ')}.` : null;
-    st.phase = 'predict'; st.predictEndsAt = Date.now() + PRED_MS;
+    const teams = st.players.filter(p => p.team.length).length;
+    st.players.forEach(p => { p.voteDone = false; });
+    st.phase = 'vote'; st.voteEndsAt = Date.now() + Math.max(VOTE_MIN_MS, Math.max(0, teams - 1) * VOTE_PER_TEAM_MS);
     this.broadcast();
   }
-  endPredict() {
-    const st = this.st, notes = this.priv.notes;
-    const teamAvg = {};
-    st.players.forEach(p => { const v = p.team.map(n => notes[n]).filter(x => x != null); teamAvg[p.id] = v.length ? avg(v) : null; });
-    const err = {}; const sent = st.players.filter(p => p.predDone);
-    sent.forEach(p => {
-      const g = this.priv.preds[p.id] || {}; const d = [];
-      st.players.forEach(q => { if (q.id === p.id || teamAvg[q.id] == null) return; d.push(Math.abs((typeof g[q.id] === 'number' ? g[q.id] : 5) - teamAvg[q.id])); });
-      err[p.id] = d.length ? avg(d) : 0;
+  endVote() {
+    const st = this.st;
+    const rows = st.players.map(p => {
+      const got = Object.entries(this.priv.votes).filter(([vid]) => vid !== p.id).map(([, g]) => g[p.id]).filter(v => typeof v === 'number');
+      return { id: p.id, name: p.name, team: p.team.slice(), avg: got.length ? r9(avg(got)) : null, votes: got.length };
     });
-    const worst = sent.length ? Math.max(...sent.map(p => err[p.id])) : 0;
-    st.players.forEach(p => { if (!p.predDone) err[p.id] = worst; });
-    const rows = st.players.map(p => ({ id: p.id, name: p.name, team: p.team.slice(), avg: teamAvg[p.id], err: err[p.id], final: r9((teamAvg[p.id] ?? 0) - err[p.id]), sent: p.predDone }));
-    rows.sort((x, y) => (y.final - x.final) || ((y.avg ?? 0) - (x.avg ?? 0)));
-    let best = [];
-    if (sent.length) { const m = Math.min(...sent.map(p => r9(err[p.id]))); best = sent.filter(p => r9(err[p.id]) === m).map(p => p.id); }
-    const preds = {}; sent.forEach(p => preds[p.id] = this.priv.preds[p.id] || {});
-    st.results = { key: uid(), rows, best, preds, teamAvg, worst };
+    rows.sort((x, y) => ((y.avg ?? -1) - (x.avg ?? -1)) || (y.votes - x.votes));
+    st.results = { key: uid(), rows };
     st.phase = 'results';
     this.broadcast();
   }
