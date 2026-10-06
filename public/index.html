@@ -119,6 +119,8 @@ input[type=range]{width:100%;accent-color:var(--pasto2);height:32px}
 .stepper{display:flex;align-items:center;gap:10px;margin:10px 0}
 .stepper button{width:56px;height:56px;border-radius:14px;border:2px solid var(--linea);background:var(--papel);font-size:1.6rem;font-weight:800}
 .stepper .amt{flex:1;text-align:center;font-family:var(--disp);font-size:2.4rem}
+.amt-input{min-width:0;width:100%;height:56px;border:2px solid var(--linea);border-radius:14px;background:var(--papel);color:var(--tinta);padding:0 6px;-moz-appearance:textfield}
+.amt-input::-webkit-outer-spin-button,.amt-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .teams .pl{padding:12px 0;border-bottom:1px solid var(--linea)}
 .teams .pl:last-child{border-bottom:0}
 .pl-head{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
@@ -161,7 +163,8 @@ tr.real td{font-weight:800}
 (() => {
 'use strict';
 const PREFIX = 'lascabras-v1-';
-const SPIN_MS = 4500, TURN_MS = 10000, SOLD_MS = 5000, PRE_MS = 3000, PRED_MS = 60000, RATE_PER = 10000;
+const SPIN_MS = 4500;
+const turnTotal = () => (S && S.config.turnSecs || 20) * 1000;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -182,9 +185,9 @@ let offset = 0;      // reloj del anfitrión - reloj local
 let connected = false;
 let code = null, myName = '';
 let rendered = null;
-let ratingDraft = {}, predDraft = {};
+let voteDraft = {};
 let bidAmount = 1, bidKey = null, beepKey = null, lastSpinKey = null, stageMode = null;
-let rateSendT = null, cfgSendT = null;
+let cfgSendT = null;
 const now = () => Date.now() + offset;
 
 /* ============ CONEXIÓN CON EL SERVIDOR ============ */
@@ -298,7 +301,7 @@ function enterGame() {
   keepAwake();
 }
 
-const PHASE_LABEL = { lobby: 'Sala de espera', rating: 'Valoración secreta', auction: 'Subasta', predict: 'Predicciones', results: 'Resultados' };
+const PHASE_LABEL = { lobby: 'Sala de espera', auction: 'Subasta', vote: 'Valoración de equipos', results: 'Resultados' };
 function myPlayer() { return S.players.find(p => p.id === me); }
 function pname(id) { const p = S.players.find(x => x.id === id); return p ? (id === me ? 'Tú' : p.name) : '?'; }
 function pobj(id) { return id === me ? 'ti' : pname(id); }
@@ -306,8 +309,7 @@ function sMax(p) { const h = S.config.teamSize - p.team.length; return h > 0 ? p
 
 function phaseDeadline() {
   if (!S) return 0;
-  if (S.phase === 'rating') return S.ratingEndsAt;
-  if (S.phase === 'predict') return S.predictEndsAt;
+  if (S.phase === 'vote') return S.voteEndsAt;
   if (S.phase === 'auction' && S.auction) return S.auction.deadline;
   return 0;
 }
@@ -317,7 +319,7 @@ function renderTop() {
   const top = $('#top'); if (!top || !S) return;
   const dl = phaseDeadline();
   const conn = connected;
-  const canPause = isHost() && ['rating', 'auction', 'predict'].includes(S.phase);
+  const canPause = isHost() && ['auction', 'vote'].includes(S.phase);
   top.innerHTML = `
     <span class="dot ${conn ? '' : 'off'}" title="${conn ? 'Conectado' : 'Reconectando'}"></span>
     <span class="code" aria-label="Código de partida">${esc(S.code)}</span>
@@ -333,8 +335,7 @@ function render() {
   const key = S.phase + '|' + S.round + '|' + (S.results ? S.results.key : '') + '|' + (isHost() ? 'h' : 'p');
   if (rendered !== key) {
     rendered = key; stageMode = null; lastSpinKey = null;
-    if (S.phase === 'rating') ratingDraft = {};
-    if (S.phase === 'predict') predDraft = {};
+    if (S.phase === 'vote') voteDraft = {};
     BUILD[S.phase]();
     window.scrollTo(0, 0);
   }
@@ -376,8 +377,9 @@ const BUILD = {
         <div class="grid2">
           <div><label class="f" for="cfg-team">Personas por equipo</label><input id="cfg-team" type="number" min="1" max="10" inputmode="numeric" value="${S.config.teamSize}"></div>
           <div><label class="f" for="cfg-goats">Cabras por jugador</label><input id="cfg-goats" type="number" min="1" max="999" inputmode="numeric" value="${S.config.goats}"></div>
+          <div><label class="f" for="cfg-turn">Segundos por turno</label><input id="cfg-turn" type="number" min="5" max="120" inputmode="numeric" value="${S.config.turnSecs || 20}"></div>
         </div>
-        <p class="small muted">La valoración durará 10 segundos por persona de la lista.</p>
+        <p class="small muted">Al final, cada jugador puntuará de 0 a 10 a los equipos de los demás.</p>
       </div>
       <p class="hint" id="lhint"></p>
       <button class="btn" data-act="start" id="startbtn">Empezar partida</button>
@@ -385,22 +387,6 @@ const BUILD = {
       <div class="panel"><h3 style="margin-bottom:8px">Configuración</h3><div id="cfgview"></div></div>
       <p class="muted" style="text-align:center">Esperando a que el anfitrión empiece la partida…</p>`}
       <button class="linkbtn" data-act="leave" style="display:block;margin:0 auto">Salir de la partida</button>
-    </div>`;
-  },
-  rating() {
-    const ppl = S.config.people;
-    $('#main').innerHTML = `
-    <div class="stack">
-      <div><h2>Valora a cada persona</h2><p class="muted">De 0 a 10, en secreto. Nadie verá tus notas. Si no conoces a alguien, déjalo sin nota.</p></div>
-      <div class="panel" id="ratelist">
-        ${ppl.map((n, i) => `
-        <div class="rate unset" data-i="${i}">
-          <div class="rate-head"><span class="rate-name">${esc(n)}</span><button class="linkbtn" data-act="rate-clear" data-i="${i}" hidden>Quitar nota</button><span class="rate-val">—</span></div>
-          <input type="range" min="0" max="10" step="1" value="5" data-rate="${i}" aria-label="Nota para ${esc(n)}">
-          <div class="scale"><span>0</span><span>5</span><span>10</span></div>
-        </div>`).join('')}
-      </div>
-      <div class="sticky-foot"><p class="small muted" id="rprog" style="text-align:center"></p><button class="btn" data-act="rate-submit" id="rsub">Enviar valoraciones</button></div>
     </div>`;
   },
   auction() {
@@ -412,53 +398,47 @@ const BUILD = {
       <div class="panel hist" id="hist"></div>
     </div>`;
   },
-  predict() {
+  vote() {
     const others = S.players.filter(p => p.id !== me && p.team.length);
-    others.forEach(p => predDraft[p.id] = 5);
     $('#main').innerHTML = `
     <div class="stack">
-      <div><h2>¿Qué media tendrá cada equipo?</h2><p class="muted">Predice la nota media de los equipos de los demás. Cuanto más te acerques, menos puntos pierdes.</p></div>
+      <div><h2>Puntúa a los equipos rivales</h2><p class="muted">De 0 a 10, en secreto. Al tuyo no lo puntúas. Gana el equipo con mejor media.</p></div>
       ${S.warn ? `<p class="warn">${esc(S.warn)}</p>` : ''}
-      <div class="panel" id="predlist">
+      <div class="panel" id="votelist">
         ${others.length ? others.map(p => `
-        <div class="rate" data-p="${esc(p.id)}">
-          <div class="rate-head"><span class="rate-name">${esc(p.name)}</span><span class="rate-val" id="pv-${esc(p.id)}">5,0</span></div>
-          <p class="small muted" style="margin:2px 0 4px">${p.team.map(esc).join(', ')}</p>
-          <input type="range" min="0" max="10" step="0.1" value="5" data-pred="${esc(p.id)}" aria-label="Media prevista del equipo de ${esc(p.name)}">
+        <div class="rate unset" data-v="${esc(p.id)}">
+          <div class="rate-head"><span class="rate-name">Equipo de ${esc(p.name)}</span><button class="linkbtn" data-act="vote-clear" data-id="${esc(p.id)}" hidden>Quitar nota</button><span class="rate-val">—</span></div>
+          <p class="small" style="margin:2px 0 4px">${p.team.map(esc).join(', ')}</p>
+          <input type="range" min="0" max="10" step="1" value="5" data-vote="${esc(p.id)}" aria-label="Nota para el equipo de ${esc(p.name)}">
           <div class="scale"><span>0</span><span>5</span><span>10</span></div>
-        </div>`).join('') : '<p class="muted">No hay equipos de otros jugadores que predecir.</p>'}
+        </div>`).join('') : '<p class="muted">No hay equipos rivales que puntuar.</p>'}
       </div>
-      <div class="sticky-foot"><p class="small muted" id="pprog" style="text-align:center"></p><button class="btn" data-act="pred-submit" id="psub">Enviar predicción</button></div>
+      <div class="sticky-foot"><p class="small muted" id="vprog" style="text-align:center"></p><button class="btn" data-act="vote-submit" id="vsub">Enviar notas</button></div>
     </div>`;
   },
   results() {
     const R = S.results; const n = R.rows.length;
+    const pos = []; R.rows.forEach((r, i) => { pos[i] = (i > 0 && r.avg === R.rows[i - 1].avg) ? pos[i - 1] : i + 1; });
     $('#main').innerHTML = `
     <div class="stack">
-      <div><h2>Ranking final</h2><p class="muted">Puntuación final = media del equipo − error medio de tus predicciones.</p></div>
+      <div><h2>Ranking final</h2><p class="muted">Media de las notas que cada equipo ha recibido de los demás.</p></div>
       <ol class="res" id="reslist">
         ${R.rows.map((r, i) => `
-        <li data-i="${i}" class="${i === 0 ? 'win' : ''}">
-          <span class="pos">${i === 0 ? '🏆' : i + 1}</span>
+        <li data-i="${i}" class="${pos[i] === 1 ? 'win' : ''}">
+          <span class="pos">${pos[i] === 1 ? '🏆' : pos[i]}</span>
           <span class="nm">${esc(r.id === me ? r.name + ' (tú)' : r.name)}</span>
-          <span class="fin">${fmt(r.final)}</span>
-          <span class="det">Media del equipo ${fmt(r.avg)}. ${r.sent ? 'Error ' + fmt(r.err) : 'Sin predicción: error ' + fmt(r.err)}</span>
+          <span class="fin">${fmt(r.avg)}</span>
+          <span class="det">${r.votes ? r.votes + (r.votes === 1 ? ' nota recibida' : ' notas recibidas') : 'Sin notas'}</span>
           <span class="tm muted">${r.team.length ? r.team.map(esc).join(', ') : 'Sin equipo'}</span>
         </li>`).join('')}
       </ol>
-      <div class="panel oracle" id="oracle">
-        <h3>🔮 Mejor adivino</h3>
-        <p style="margin:6px 0 0;font-size:1.15rem;font-weight:800">${R.best.length ? R.best.map(id => esc(pname(id))).join(' y ') : 'Nadie envió predicción'}</p>
-        ${R.best.length ? `<p class="small muted" style="margin:0">Error medio de ${fmt(R.rows.find(r => r.id === R.best[0]).err)}</p>` : ''}
-      </div>
-      <div class="panel oracle" id="predtbl">${predTable()}</div>
       ${isHost() ? `<button class="btn" data-act="new-game">Nueva partida con los mismos</button><button class="btn sec" data-act="to-lobby">Volver a la sala</button>` : `<p class="muted" style="text-align:center">El anfitrión decidirá si jugáis otra.</p>`}
       <button class="linkbtn" data-act="leave" style="display:block;margin:0 auto">Salir de la partida</button>
     </div>`;
     const items = [...document.querySelectorAll('#reslist li')];
     let k = n - 1; const step = () => {
-      if (!$('#oracle')) return;
-      if (k < 0) { $('#oracle').classList.add('show'); setTimeout(() => $('#predtbl') && $('#predtbl').classList.add('show'), 600); return; }
+      if (!$('#reslist')) return;
+      if (k < 0) return;
       items[k].classList.add('show');
       if (k === 0) beep();
       k--; setTimeout(step, k === 0 ? 2200 : 1300);
@@ -466,18 +446,6 @@ const BUILD = {
     setTimeout(step, 600);
   }
 };
-
-function predTable() {
-  const R = S.results; const teams = S.players.filter(p => R.teamAvg[p.id] != null);
-  const preds = Object.keys(R.preds);
-  if (!preds.length) return '<h3>Predicciones</h3><p class="muted">Nadie envió predicción.</p>';
-  return `<h3 style="margin-bottom:8px">Predicciones frente a la realidad</h3><div class="tbl-wrap"><table>
-    <thead><tr><th>Quién predice</th>${teams.map(t => `<th>${esc(t.name)}</th>`).join('')}</tr></thead>
-    <tbody>
-      <tr class="real"><td>Media real</td>${teams.map(t => `<td>${fmt(R.teamAvg[t.id])}</td>`).join('')}</tr>
-      ${preds.map(pid => `<tr><td>${esc(pname(pid))}</td>${teams.map(t => `<td>${t.id === pid ? '—' : fmt(R.preds[pid][t.id], 1)}</td>`).join('')}</tr>`).join('')}
-    </tbody></table></div>`;
-}
 
 /* ============ Fases: actualización ============ */
 const UPDATE = {
@@ -487,25 +455,17 @@ const UPDATE = {
     if (isHost()) { const c = lobbyCheck(); $('#lhint').textContent = c.msg; $('#lhint').className = 'hint' + (c.ok ? '' : ' bad'); $('#startbtn').disabled = !c.ok; }
     else {
       const c = S.config;
-      $('#cfgview').innerHTML = `<p style="margin:0 0 8px">Equipos de <b>${c.teamSize}</b> y <b>${c.goats}</b> cabras por jugador.</p>
+      $('#cfgview').innerHTML = `<p style="margin:0 0 8px">Equipos de <b>${c.teamSize}</b>, <b>${c.goats}</b> cabras por jugador y <b>${c.turnSecs || 20}</b> s por turno.</p>
         ${c.people.length ? `<div class="chips">${c.people.map(n => `<span class="chip">${esc(n)}</span>`).join('')}</div>` : '<p class="muted small" style="margin:0">El anfitrión aún no ha añadido personas.</p>'}`;
     }
   },
-  rating() {
-    const mine = myPlayer(); const done = S.players.filter(p => p.ratedDone).length;
-    $('#rprog').textContent = `${done} de ${S.players.length} han enviado sus notas`;
-    if (mine && mine.ratedDone) {
-      $('#ratelist').classList.add('locked'); $('#rsub').disabled = true; $('#rsub').textContent = 'Valoraciones enviadas';
-      document.querySelectorAll('[data-rate]').forEach(i => i.disabled = true);
-    }
-  },
   auction() { updateStage(); updateAction(); updateTeams(); updateHist(); },
-  predict() {
-    const mine = myPlayer(); const done = S.players.filter(p => p.predDone).length;
-    $('#pprog').textContent = `${done} de ${S.players.length} han enviado su predicción`;
-    if (mine && mine.predDone) {
-      $('#predlist').classList.add('locked'); $('#psub').disabled = true; $('#psub').textContent = 'Predicción enviada';
-      document.querySelectorAll('[data-pred]').forEach(i => i.disabled = true);
+  vote() {
+    const mine = myPlayer(); const done = S.players.filter(p => p.voteDone).length;
+    $('#vprog').textContent = `${done} de ${S.players.length} han enviado sus notas`;
+    if (mine && mine.voteDone) {
+      $('#votelist').classList.add('locked'); $('#vsub').disabled = true; $('#vsub').textContent = 'Notas enviadas';
+      document.querySelectorAll('[data-vote]').forEach(i => i.disabled = true);
     }
   }
 };
@@ -551,13 +511,13 @@ function updateStage() {
   if (a.stage === 'pre') {
     el.innerHTML = `<div class="panel lot"><p class="kicker">Empieza la subasta</p><div class="name">${a.wheel.length} personas</div>
       <p class="muted" style="margin:0">La ruleta gira en <b data-deadline="${a.deadline}"></b> s</p>
-      ${S.excluded ? `<p class="small muted" style="margin:8px 0 0">${S.excluded} sin ninguna nota quedan fuera de la ruleta.</p>` : ''}</div>`;
+</div>`;
   } else if (a.stage === 'bidding') {
     el.innerHTML = `<div class="panel lot">
       <p class="kicker">En subasta</p><div class="name">${esc(a.lot)}</div>
       <p class="bidline">${a.leader ? `Puja actual <b>${a.bid}</b> 🐐 ${a.leader === me ? 'tuya' : 'de ' + esc(pname(a.leader))}` : (a.opener === me ? 'Abres tú con mínimo 1 🐐' : `Abre ${esc(pname(a.opener))} con mínimo 1 🐐`)}</p>
       <p style="margin:0" class="muted">${a.turn === me ? '<b style="color:var(--tinta)">Te toca a ti</b>' : `Turno de <b style="color:var(--tinta)">${esc(pname(a.turn))}</b>`}</p>
-      <div class="bar" data-bar="${a.deadline}" data-total="${TURN_MS}"><i></i></div></div>`;
+      <div class="bar" data-bar="${a.deadline}" data-total="${turnTotal()}"><i></i></div></div>`;
   } else if (a.stage === 'sold') {
     const l = a.last;
     el.innerHTML = `<div class="panel lot">
@@ -578,20 +538,38 @@ function updateAction() {
   }
   const max = sMax(mine), min = a.bid + 1, opening = a.leader === null;
   const key = a.spin.key + ':' + a.bid + ':' + a.turn;
+  const typing = document.activeElement && document.activeElement.id === 'bid-input';
+  if (bidKey === key && typing) return; // no pisar lo que se está escribiendo
   if (bidKey !== key) { bidKey = key; bidAmount = min; }
   if (beepKey !== key) { beepKey = key; beep(); }
   bidAmount = Math.max(min, Math.min(max, bidAmount));
   const full = mine.team.length >= S.config.teamSize;
   el.innerHTML = `<div class="panel yourturn">
     <h3>Te toca</h3>
-    <p class="small" style="margin:4px 0 0">${opening ? 'Abres tú: tienes que pujar al menos 1 cabra.' : 'Sube la puja o retírate.'} Tu máximo es <b>${max}</b> 🐐.${full ? ' Ya tienes el equipo completo: si ganas, pagas y la persona queda descartada.' : ''}</p>
-    <div class="stepper"><button data-act="bid-minus" aria-label="Una cabra menos" ${bidAmount <= min ? 'disabled' : ''}>−</button><span class="amt">${bidAmount}</span><button data-act="bid-plus" aria-label="Una cabra más" ${bidAmount >= max ? 'disabled' : ''}>+</button></div>
+    <p class="small" style="margin:4px 0 0">${opening ? 'Abres tú: tienes que pujar al menos 1 cabra.' : 'Sube la puja o retírate.'} Puedes pujar de <b>${min}</b> a <b>${max}</b> 🐐.${full ? ' Ya tienes el equipo completo: si ganas, pagas y la persona queda descartada.' : ''}</p>
+    <div class="stepper"><button data-act="bid-minus" aria-label="Una cabra menos" ${bidAmount <= min ? 'disabled' : ''}>−</button><input id="bid-input" class="amt amt-input" type="number" inputmode="numeric" pattern="[0-9]*" min="${min}" max="${max}" value="${bidAmount}" aria-label="Cabras a pujar"><button data-act="bid-plus" aria-label="Una cabra más" ${bidAmount >= max ? 'disabled' : ''}>+</button></div>
+    <p class="small hint bad" id="bid-err" style="text-align:center;margin:-4px 0 8px" hidden></p>
     <div class="row" style="margin-bottom:10px"><button class="btn sec" data-act="bid-max" style="padding:10px">Máximo (${max})</button></div>
-    <div class="stack"><button class="btn dark" data-act="bid-go">Pujar ${bidAmount} 🐐</button>
+    <div class="stack"><button class="btn dark" data-act="bid-go" id="bid-go">Pujar ${bidAmount} 🐐</button>
     ${opening ? '' : '<button class="btn sec" data-act="withdraw">Me retiro</button>'}</div>
-    <div class="bar" data-bar="${a.deadline}" data-total="${TURN_MS}"><i></i></div>
+    <div class="bar" data-bar="${a.deadline}" data-total="${turnTotal()}"><i></i></div>
   </div>`;
+  const inp = $('#bid-input');
+  inp.addEventListener('focus', () => inp.select());
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitBid(); } });
   updateTimers();
+}
+function bidLimits() { const a = S.auction, mine = myPlayer(); return { min: a.bid + 1, max: sMax(mine) }; }
+function syncBidButton() {
+  const { min, max } = bidLimits(); const ok = Number.isInteger(bidAmount) && bidAmount >= min && bidAmount <= max;
+  const go = $('#bid-go'), err = $('#bid-err'); if (!go) return;
+  go.disabled = !ok; go.textContent = ok ? `Pujar ${bidAmount} 🐐` : 'Pujar';
+  err.hidden = ok; err.textContent = ok ? '' : `Escribe una cifra entre ${min} y ${max}`;
+}
+function submitBid() {
+  const { min, max } = bidLimits();
+  if (!(Number.isInteger(bidAmount) && bidAmount >= min && bidAmount <= max)) { toast(`La puja tiene que estar entre ${min} y ${max}`); return; }
+  send({ t: 'bid', amount: bidAmount });
 }
 
 function updateTeams() {
@@ -631,32 +609,29 @@ function onClick(e) {
       else (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast('Enlace copiado'), () => toast('Código: ' + S.code));
       break;
     }
-    case 'rate-clear': {
-      const i = +b.dataset.i; delete ratingDraft[S.config.people[i]];
-      const row = document.querySelector(`.rate[data-i="${i}"]`); row.classList.add('unset'); row.querySelector('.rate-val').textContent = '—'; b.hidden = true;
-      queueRateSend(); break;
+    case 'vote-clear': {
+      const id = b.dataset.id; delete voteDraft[id];
+      const row = b.closest('.rate'); row.classList.add('unset'); row.querySelector('.rate-val').textContent = '—'; b.hidden = true;
+      break;
     }
-    case 'rate-submit': clearTimeout(rateSendT); send({ t: 'rate', r: ratingDraft, done: true }); break;
+    case 'vote-submit': send({ t: 'vote', g: voteDraft }); break;
     case 'bid-minus': bidAmount--; updateAction(); break;
     case 'bid-plus': bidAmount++; updateAction(); break;
     case 'bid-max': bidAmount = sMax(myPlayer()); updateAction(); break;
-    case 'bid-go': send({ t: 'bid', amount: bidAmount }); break;
+    case 'bid-go': submitBid(); break;
     case 'withdraw': send({ t: 'withdraw' }); break;
-    case 'pred-submit': send({ t: 'pred', g: predDraft }); break;
   }
 }
-function queueRateSend() { clearTimeout(rateSendT); rateSendT = setTimeout(() => send({ t: 'rate', r: ratingDraft }), 250); }
 function onInput(e) {
   const t = e.target;
-  if (t.dataset.rate !== undefined) {
-    const i = +t.dataset.rate, n = S.config.people[i]; ratingDraft[n] = +t.value;
-    const row = t.closest('.rate'); row.classList.remove('unset'); row.querySelector('.rate-val').textContent = t.value; row.querySelector('[data-act=rate-clear]').hidden = false;
-    queueRateSend();
-  } else if (t.dataset.pred !== undefined) {
-    predDraft[t.dataset.pred] = +t.value; const v = document.getElementById('pv-' + t.dataset.pred); if (v) v.textContent = fmt(+t.value, 1);
-  } else if (isHost() && ['cfg-people', 'cfg-team', 'cfg-goats'].includes(t.id)) {
+  if (t.dataset.vote !== undefined) {
+    voteDraft[t.dataset.vote] = +t.value;
+    const row = t.closest('.rate'); row.classList.remove('unset'); row.querySelector('.rate-val').textContent = t.value; row.querySelector('[data-act=vote-clear]').hidden = false;
+  } else if (t.id === 'bid-input') {
+    const v = parseInt(t.value); if (!isNaN(v)) bidAmount = v; syncBidButton();
+  } else if (isHost() && ['cfg-people', 'cfg-team', 'cfg-goats', 'cfg-turn'].includes(t.id)) {
     clearTimeout(cfgSendT);
-    cfgSendT = setTimeout(() => send({ t: 'config', people: $('#cfg-people').value.split('\n'), teamSize: $('#cfg-team').value, goats: $('#cfg-goats').value }), 300);
+    cfgSendT = setTimeout(() => send({ t: 'config', people: $('#cfg-people').value.split('\n'), teamSize: $('#cfg-team').value, goats: $('#cfg-goats').value, turnSecs: $('#cfg-turn').value }), 300);
   }
 }
 
