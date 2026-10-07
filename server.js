@@ -15,6 +15,7 @@ const VOTE_MIN_MS = 60000 * K, VOTE_PER_TEAM_MS = 15000 * K;
 const HOST_HANDOVER_MS = 20000 * K;
 const GAME_IDLE_MS = 3 * 60 * 60 * 1000;
 const MAX_TURN_SECS = 10;
+const REACTIONS = ['🐐', '🔥', '😂', '💸', '😱', '👏'];
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -46,7 +47,7 @@ class Game {
     };
     games.set(this.code, this);
   }
-  freshPriv() { return { vetoHolder: null, swapHolder: null, swapOffer: null, swapSkipped: false, votes: {} }; }
+  freshPriv() { return { vetoHolder: null, swapHolder: null, swapOffer: null, swapSkipped: false, votes: {}, bids: {} }; }
   newPlayer(id, name) { return { id, name, connected: true, discAt: 0, goats: 0, team: [], voteDone: false }; }
   P(id) { return this.st.players.find(p => p.id === id); }
   holes(p) { return this.st.config.teamSize - p.team.length; }
@@ -125,6 +126,14 @@ class Game {
     const m = { id: uid(), by: ws.pid, text, at: t };
     this.chat.push(m); if (this.chat.length > 60) this.chat.shift();
     for (const s of this.sockets) send(s, { t: 'chat', m });
+  }
+
+  // ---------- reacciones ----------
+  react(ws, e) {
+    const t = Date.now();
+    if (!REACTIONS.includes(e) || (ws.lastReact && t - ws.lastReact < 180)) return;
+    ws.lastReact = t;
+    for (const s of this.sockets) send(s, { t: 'react', e, by: ws.pid });
   }
 
   // ---------- acciones ----------
@@ -213,7 +222,7 @@ class Game {
   }
   lobbyOk() {
     const c = this.st.config, n = this.st.players.length;
-    return n >= 2 && c.teamSize >= 1 && c.goats >= c.teamSize && c.people.length >= n * c.teamSize;
+    return n >= 2 && c.teamSize >= 1 && c.goats >= c.teamSize && c.people.length >= n * c.teamSize + n; // una de margen por jugador para los descartes
   }
 
   // ---------- subasta ----------
@@ -261,7 +270,7 @@ class Game {
     const idx = Math.floor(Math.random() * a.wheel.length);
     a.spin = { key: uid(), names: a.wheel.slice(), index: idx, endsAt: Date.now() + SPIN_MS };
     a.lot = a.wheel[idx]; a.wheel.splice(idx, 1);
-    Object.assign(a, { stage: 'spinning', deadline: Date.now() + SPIN_MS, bid: 0, leader: null, turn: null, opener: null, vetoed: null, withdrawn: [] });
+    Object.assign(a, { stage: 'spinning', deadline: Date.now() + SPIN_MS, bidCount: 0, bid: 0, leader: null, turn: null, opener: null, vetoed: null, withdrawn: [] });
     this.broadcast();
   }
   pickOpener() {
@@ -307,7 +316,7 @@ class Game {
     if (!(amount >= a.bid + 1 && amount <= this.maxBid(p))) return;
     this.forceBid(pid, amount);
   }
-  forceBid(pid, amount) { const a = this.st.auction; a.bid = amount; a.leader = pid; this.advanceTurn(pid); }
+  forceBid(pid, amount) { const a = this.st.auction; a.bid = amount; a.leader = pid; a.bidCount = (a.bidCount || 0) + 1; this.priv.bids[pid] = (this.priv.bids[pid] || 0) + 1; this.advanceTurn(pid); }
   withdraw(pid) {
     const st = this.st, a = st.auction;
     if (st.phase !== 'auction' || !a || a.stage !== 'bidding' || a.turn !== pid || a.leader === null) return;
@@ -335,7 +344,7 @@ class Game {
     w.goats -= a.bid;
     let discarded = false;
     if (w.team.length < st.config.teamSize) w.team.push(a.lot); else discarded = true;
-    const rec = { lot: a.lot, by: w.id, amount: a.bid, discarded, vetoed: a.vetoed };
+    const rec = { lot: a.lot, by: w.id, amount: a.bid, discarded, vetoed: a.vetoed, bids: a.bidCount || 1 };
     st.history.unshift(rec); a.last = rec;
     Object.assign(a, { stage: 'sold', turn: null, deadline: Date.now() + SOLD_MS });
     this.broadcast();
@@ -418,6 +427,44 @@ class Game {
     st.phase = 'vote'; st.voteEndsAt = Date.now() + Math.max(VOTE_MIN_MS, teams * VOTE_PER_TEAM_MS);
     this.broadcast();
   }
+  // premios de la noche: se calculan con lo que ha pasado en la partida
+  awards(rows, votes) {
+    const st = this.st, H = st.history, out = [];
+    // si lo gana todo el mundo, el premio no tiene gracia: m = 0 lo descarta
+    const maxBy = (items, val) => { const m = Math.max(...items.map(val)); const who = items.filter(x => val(x) === m); return { m: items.length > 1 && who.length === items.length ? 0 : m, who }; };
+    const posOf = id => (rows.find(r => r.id === id) || {}).pos || 99;
+    const bought = H.filter(h => !h.discarded);
+    if (bought.length) {
+      const top = bought.reduce((a, b) => b.amount > a.amount ? b : a);
+      out.push({ icon: '💎', title: 'Fichaje más caro', who: [top.by], text: `${top.lot}, por ${top.amount} 🐐` });
+      const min = Math.min(...bought.map(h => h.amount));
+      const cheap = bought.filter(h => h.amount === min).sort((a, b) => posOf(a.by) - posOf(b.by))[0];
+      out.push({ icon: '🏷️', title: 'Ganga de la noche', who: [cheap.by], text: `${cheap.lot}, por solo ${cheap.amount} 🐐` });
+    }
+    const hot = H.slice().sort((a, b) => (b.bids || 0) - (a.bids || 0))[0];
+    if (hot && hot.bids >= 3) out.push({ icon: '🔥', title: 'La más deseada', who: hot.discarded ? [] : [hot.by], text: `${hot.lot}: ${hot.bids} pujas${hot.discarded ? ', y al final nadie se la llevó' : ''}` });
+    const pl = st.players;
+    if (pl.length) {
+      const spent = maxBy(pl, p => st.config.goats - p.goats);
+      if (spent.m > 0) out.push({ icon: '💸', title: 'El derrochador', who: spent.who.map(p => p.id), text: `${spent.m} 🐐 gastadas` });
+      const left = maxBy(pl, p => p.goats);
+      if (left.m > 0) out.push({ icon: '🐷', title: 'La hucha', who: left.who.map(p => p.id), text: `le ${left.who.length > 1 ? 'sobraron a cada uno' : 'sobraron'} ${left.m} 🐐 sin usar` });
+      const block = maxBy(pl, p => H.filter(h => h.discarded && h.by === p.id).reduce((s, h) => s + h.amount, 0));
+      if (block.m > 0) out.push({ icon: '🧱', title: 'Rey del bloqueo', who: block.who.map(p => p.id), text: `quemó ${block.m} 🐐 en chicas que nadie se llevó` });
+      const bids = maxBy(pl, p => this.priv.bids[p.id] || 0);
+      if (bids.m > 0) out.push({ icon: '🔨', title: 'Pujador compulsivo', who: bids.who.map(p => p.id), text: `${bids.m} pujas en toda la partida` });
+    }
+    // ojo de halcón: el ranking más parecido al resultado final
+    const errs = Object.entries(votes).map(([vid, order]) => {
+      const ideal = order.slice().sort((a, b) => posOf(a) - posOf(b));
+      return { vid, e: order.reduce((s, id, i) => s + Math.abs(i - ideal.indexOf(id)), 0) };
+    });
+    if (errs.length) {
+      const m = Math.min(...errs.map(x => x.e));
+      out.push({ icon: '🦅', title: 'Ojo de halcón', who: errs.filter(x => x.e === m).map(x => x.vid), text: m === 0 ? 'clavó el ranking final' : 'el ranking más parecido al resultado final' });
+    }
+    return out;
+  }
   endVote() {
     const st = this.st, votes = this.priv.votes;
     const teams = st.players.filter(p => p.team.length);
@@ -441,7 +488,7 @@ class Game {
       else { r.pos = i + 1; if (prev && prev.points === r.points) { r.byTiebreak = true; prev.byTiebreak = true; tiedBroken = true; } }
     });
     st.results = {
-      key: uid(), rows, ballots: votes, tiedBroken,
+      key: uid(), rows, ballots: votes, tiedBroken, awards: this.awards(rows, votes),
       reveal: { veto: this.priv.vetoHolder, vetoed: st.vetoed.slice(), swap: this.priv.swapHolder, swapUsed: !!(st.swap && st.swap.info) }
     };
     st.phase = 'results';
@@ -485,6 +532,8 @@ wss.on('connection', ws => {
       if (ws.game) ws.game.leave(ws);
     } else if (m.t === 'chat') {
       if (ws.game) ws.game.say(ws, m.text);
+    } else if (m.t === 'react') {
+      if (ws.game) ws.game.react(ws, m.e);
     } else if (ws.game) {
       ws.game.handle(ws.pid, m);
     }
