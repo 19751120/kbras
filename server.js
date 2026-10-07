@@ -1,5 +1,5 @@
 // Las Cabras — servidor multijugador (Node.js + WebSocket)
-// Sirve la página y lleva todas las partidas: estado, temporizadores y reglas.
+// Sirve la página y lleva todas las partidas: estado, temporizadores, reglas, poderes secretos y chat.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -9,14 +9,16 @@ const PORT = process.env.PORT || 3000;
 const INDEX_PATH = path.join(__dirname, 'public', 'index.html');
 
 const K = Number(process.env.TIME_SCALE) || 1; // solo para pruebas
-const SPIN_MS = 4500 * K, SOLD_MS = 5000 * K, PRE_MS = 3000 * K, VOTE_PER_TEAM_MS = 20000 * K, VOTE_MIN_MS = 60000 * K;
-const HOST_HANDOVER_MS = 20000 * K;          // si el anfitrión se va 20 s, otro hereda los botones
-const GAME_IDLE_MS = 3 * 60 * 60 * 1000; // partidas sin nadie conectado se borran a las 3 h
+const SPIN_MS = 2500 * K, VETO_MS = 5000 * K, SOLD_MS = 4000 * K, PRE_MS = 3000 * K;
+const SWAP_MS = 40000 * K, SWAP_CONFIRM_MS = 20000 * K, RESPIN_ASK_MS = 15000 * K, SWAP_DONE_MS = 6000 * K;
+const VOTE_MIN_MS = 60000 * K, VOTE_PER_TEAM_MS = 15000 * K;
+const HOST_HANDOVER_MS = 20000 * K;
+const GAME_IDLE_MS = 3 * 60 * 60 * 1000;
+const MAX_TURN_SECS = 10;
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-const r9 = x => Math.round(x * 1e9) / 1e9;
+const pick = a => a[Math.floor(Math.random() * a.length)];
 
 const games = new Map();
 function genCode() {
@@ -28,29 +30,39 @@ function genCode() {
 class Game {
   constructor(hostName, cid) {
     this.code = genCode();
-    this.priv = { votes: {} };
-    this.cids = {};            // id de jugador -> token secreto del dispositivo (nunca se envía)
+    this.priv = this.freshPriv();
+    this.cids = {};
     this.sockets = new Set();
+    this.chat = [];
     this.lastActive = Date.now();
     const hid = uid();
     this.cids[hid] = cid;
     this.st = {
       phase: 'lobby', code: this.code, round: 1, paused: false, pausedAt: 0, hostId: hid,
-      config: { people: [], teamSize: 3, goats: 21, turnSecs: 20 },
+      config: { people: [], teamSize: 3, goats: 21, turnSecs: 10 },
       players: [this.newPlayer(hid, hostName)],
-      order: [], openerIdx: 0, voteEndsAt: 0, auction: null, history: [], results: null, warn: null
+      order: [], openerIdx: 0, auction: null, history: [], leftovers: [], swap: null,
+      voteEndsAt: 0, results: null, warn: null, vetoed: []
     };
     games.set(this.code, this);
   }
+  freshPriv() { return { vetoHolder: null, swapHolder: null, swapOffer: null, swapSkipped: false, votes: {} }; }
   newPlayer(id, name) { return { id, name, connected: true, discAt: 0, goats: 0, team: [], voteDone: false }; }
-  turnMs() { return this.st.config.turnSecs * 1000 * K; }
   P(id) { return this.st.players.find(p => p.id === id); }
   holes(p) { return this.st.config.teamSize - p.team.length; }
   maxBid(p) { return this.holes(p) > 0 ? p.goats - (this.holes(p) - 1) : p.goats; }
+  turnMs() { return Math.min(MAX_TURN_SECS, this.st.config.turnSecs) * 1000 * K; }
 
+  // lo que solo ve cada jugador (poderes secretos)
+  mine(pid) {
+    const pr = this.priv, out = {};
+    if (pr.vetoHolder === pid) out.veto = true;
+    if (pr.swapHolder === pid) out.swap = { offer: pr.swapOffer, skipped: pr.swapSkipped };
+    return out;
+  }
   broadcast() {
     const now = Date.now(); this.lastActive = now;
-    for (const ws of this.sockets) send(ws, { t: 'state', s: this.st, now, you: ws.pid });
+    for (const ws of this.sockets) send(ws, { t: 'state', s: this.st, now, you: ws.pid, mine: this.mine(ws.pid) });
   }
   toast(msg, except) { for (const ws of this.sockets) if (ws !== except) send(ws, { t: 'toast', msg }); }
 
@@ -63,7 +75,7 @@ class Game {
       const same = st.players.find(x => x.name.toLowerCase() === name.toLowerCase());
       if (same) {
         if (same.connected) return send(ws, { t: 'error', code: 'name', msg: 'Ya hay alguien con ese nombre en la partida. Usa otro.' });
-        p = same; // retoma su sitio desde otro dispositivo
+        p = same;
       } else {
         if (st.phase !== 'lobby') return send(ws, { t: 'error', code: 'started', msg: 'La partida ya ha empezado. Solo pueden volver los jugadores que ya estaban.' });
         if (st.players.length >= 20) return send(ws, { t: 'error', code: 'full', msg: 'La partida está llena (20 jugadores).' });
@@ -75,6 +87,7 @@ class Game {
     if (ws.game && ws.game !== this) ws.game.drop(ws);
     p.connected = true; p.discAt = 0;
     ws.game = this; ws.pid = p.id; this.sockets.add(ws);
+    send(ws, { t: 'chatlog', list: this.chat });
     this.broadcast();
   }
   drop(ws) {
@@ -102,7 +115,19 @@ class Game {
     if (next) { this.st.hostId = next.id; this.toast(next.name + ' es ahora el anfitrión'); }
   }
 
-  // ---------- acciones de jugador ----------
+  // ---------- chat ----------
+  say(ws, text) {
+    const t = Date.now();
+    if (ws.lastChat && t - ws.lastChat < 300) return;
+    ws.lastChat = t;
+    text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!text) return;
+    const m = { id: uid(), by: ws.pid, text, at: t };
+    this.chat.push(m); if (this.chat.length > 60) this.chat.shift();
+    for (const s of this.sockets) send(s, { t: 'chat', m });
+  }
+
+  // ---------- acciones ----------
   handle(pid, m) {
     const st = this.st; const p = this.P(pid); if (!p) return;
     const isHost = st.hostId === pid;
@@ -116,41 +141,52 @@ class Game {
           people,
           teamSize: Math.max(1, Math.min(10, parseInt(m.teamSize) || 1)),
           goats: Math.max(1, Math.min(999, parseInt(m.goats) || 1)),
-          turnSecs: Math.max(5, Math.min(120, parseInt(m.turnSecs) || 20))
+          turnSecs: Math.max(5, Math.min(MAX_TURN_SECS, parseInt(m.turnSecs) || MAX_TURN_SECS))
         };
         return this.broadcast();
       }
       case 'host': if (isHost) this.hostAction(m.act); return;
       case 'bid': if (!st.paused) this.placeBid(pid, Number(m.amount)); return;
       case 'withdraw': if (!st.paused) this.withdraw(pid); return;
+      case 'veto': if (!st.paused) this.useVeto(pid, m.target); return;
+      case 'swap-pick': if (!st.paused) this.swapPick(pid, m.mine, m.target); return;
+      case 'swap-decide': if (!st.paused) this.swapDecide(pid, !!m.accept); return;
+      case 'swap-skip': if (!st.paused) this.swapSkip(pid); return;
+      case 'respin': if (!st.paused) this.respinDecide(pid, !!m.go); return;
       case 'vote': {
         if (st.phase !== 'vote' || p.voteDone) return;
-        const g = {}; const src = m.g || {};
-        for (const q of st.players) {
-          if (q.id === pid || !q.team.length) continue;
-          const v = Number(src[q.id]);
-          if (src[q.id] !== null && src[q.id] !== undefined && isFinite(v) && v >= 0 && v <= 10) g[q.id] = Math.round(v);
-        }
-        this.priv.votes[pid] = g; p.voteDone = true;
+        const rivals = st.players.filter(q => q.id !== pid && q.team.length).map(q => q.id);
+        const order = Array.isArray(m.order) ? m.order.map(String) : [];
+        if (order.length !== rivals.length || new Set(order).size !== order.length || !order.every(id => rivals.includes(id))) return;
+        this.priv.votes[pid] = order; p.voteDone = true;
         if (!this.checkAllDone()) this.broadcast();
         return;
       }
     }
   }
 
-  // cierra la fase en cuanto todos los jugadores conectados han enviado
   checkAllDone() {
     const st = this.st, on = st.players.filter(x => x.connected);
     if (!on.length || st.paused) return false;
-    if (st.phase === 'vote' && on.every(x => x.voteDone)) { this.endVote(); return true; }
+    if (st.phase === 'vote') {
+      const voters = on.filter(x => st.players.some(q => q.id !== x.id && q.team.length));
+      if (voters.every(x => x.voteDone)) { this.endVote(); return true; }
+    }
     return false;
   }
+
   hostAction(act) {
     const st = this.st;
     if (act === 'pause') {
-      if (!['auction', 'vote'].includes(st.phase)) return;
+      if (!['auction', 'swap', 'vote'].includes(st.phase)) return;
       if (!st.paused) { st.paused = true; st.pausedAt = Date.now(); }
-      else { const d = Date.now() - st.pausedAt; st.voteEndsAt += d; if (st.auction) st.auction.deadline += d; if (st.auction && st.auction.spin) st.auction.spin.endsAt += d; st.paused = false; }
+      else {
+        const d = Date.now() - st.pausedAt;
+        st.voteEndsAt += d;
+        if (st.auction) { st.auction.deadline += d; if (st.auction.spin) st.auction.spin.endsAt += d; }
+        if (st.swap) { st.swap.deadline += d; if (st.swap.spin) st.swap.spin.endsAt += d; }
+        st.paused = false;
+      }
       this.broadcast();
     } else if (act === 'start') {
       if (st.phase !== 'lobby') return;
@@ -169,9 +205,10 @@ class Game {
   }
   toLobby() {
     const st = this.st;
-    st.round++; st.phase = 'lobby'; st.results = null; st.auction = null; st.history = []; st.paused = false;
+    st.round++; st.phase = 'lobby'; st.results = null; st.auction = null; st.swap = null; st.history = []; st.leftovers = []; st.vetoed = []; st.paused = false;
     st.players = st.players.filter(p => p.connected);
     st.players.forEach(p => { p.team = []; p.goats = 0; p.voteDone = false; });
+    this.priv = this.freshPriv();
     this.broadcast();
   }
   lobbyOk() {
@@ -179,15 +216,20 @@ class Game {
     return n >= 2 && c.teamSize >= 1 && c.goats >= c.teamSize && c.people.length >= n * c.teamSize;
   }
 
-  // ---------- fases ----------
+  // ---------- subasta ----------
   startAuction() {
     const st = this.st, c = st.config;
     st.players.forEach(p => { p.goats = c.goats; p.team = []; p.voteDone = false; });
-    this.priv = { votes: {} };
-    st.history = []; st.results = null; st.warn = null; st.paused = false;
-    st.order = shuffle(st.players.map(p => p.id)); st.openerIdx = 0;
+    this.priv = this.freshPriv();
+    const ids = st.players.map(p => p.id);
+    // poderes secretos: el veto solo tiene sentido con 3 o más jugadores
+    if (ids.length >= 3) this.priv.vetoHolder = pick(ids);
+    const swapPool = ids.filter(id => id !== this.priv.vetoHolder);
+    this.priv.swapHolder = pick(swapPool.length ? swapPool : ids);
+    st.history = []; st.results = null; st.warn = null; st.paused = false; st.swap = null; st.leftovers = []; st.vetoed = [];
+    st.order = shuffle(ids); st.openerIdx = 0;
     st.phase = 'auction';
-    st.auction = { wheel: c.people.slice(), stage: 'pre', deadline: Date.now() + PRE_MS, spin: null, lot: null, bid: 0, leader: null, turn: null, opener: null, withdrawn: [], last: null };
+    st.auction = { wheel: c.people.slice(), stage: 'pre', deadline: Date.now() + PRE_MS, spin: null, lot: null, bid: 0, leader: null, turn: null, opener: null, vetoed: null, withdrawn: [], last: null };
     this.broadcast();
   }
   tick(t) {
@@ -201,8 +243,15 @@ class Game {
     else if (st.phase === 'auction') {
       const a = st.auction; if (t < a.deadline) return;
       if (a.stage === 'pre' || a.stage === 'sold') this.nextLot();
-      else if (a.stage === 'spinning') this.startBidding();
+      else if (a.stage === 'spinning') this.startVeto();
+      else if (a.stage === 'veto') this.startBidding();
       else if (a.stage === 'bidding') this.turnTimeout();
+    } else if (st.phase === 'swap') {
+      const s = st.swap; if (t < s.deadline) return;
+      if (s.stage === 'secret') this.startVote();
+      else if (s.stage === 'respin-ask') { s.stage = 'done'; s.deadline = t + SWAP_DONE_MS; this.broadcast(); }
+      else if (s.stage === 'spinning') this.applyRespin();
+      else if (s.stage === 'done') this.startVote();
     }
   }
   nextLot() {
@@ -212,18 +261,42 @@ class Game {
     const idx = Math.floor(Math.random() * a.wheel.length);
     a.spin = { key: uid(), names: a.wheel.slice(), index: idx, endsAt: Date.now() + SPIN_MS };
     a.lot = a.wheel[idx]; a.wheel.splice(idx, 1);
-    Object.assign(a, { stage: 'spinning', deadline: Date.now() + SPIN_MS, bid: 0, leader: null, turn: null, opener: null, withdrawn: [] });
+    Object.assign(a, { stage: 'spinning', deadline: Date.now() + SPIN_MS, bid: 0, leader: null, turn: null, opener: null, vetoed: null, withdrawn: [] });
+    this.broadcast();
+  }
+  pickOpener() {
+    const st = this.st, o = st.order, n = o.length;
+    for (let k = 0; k < n; k++) {
+      const id = o[(st.openerIdx + k) % n]; const p = this.P(id);
+      if (p && p.team.length < st.config.teamSize) { st.openerIdx = (st.openerIdx + k + 1) % n; return id; }
+    }
+    return null;
+  }
+  startVeto() {
+    const a = this.st.auction;
+    const opener = this.pickOpener();
+    if (!opener) return this.endAuction();
+    a.opener = opener;
+    if (!this.priv.vetoHolder) return this.startBidding();
+    a.stage = 'veto'; a.deadline = Date.now() + VETO_MS;
+    this.broadcast();
+  }
+  vetoTargets() {
+    const st = this.st, a = st.auction, h = this.priv.vetoHolder;
+    return st.players.filter(p => p.id !== h && p.id !== a.opener && !st.vetoed.includes(p.id)).map(p => p.id);
+  }
+  useVeto(pid, target) {
+    const st = this.st, a = st.auction;
+    if (st.phase !== 'auction' || !a || a.stage !== 'veto' || this.priv.vetoHolder !== pid || a.vetoed) return;
+    if (!this.vetoTargets().includes(target)) return;
+    a.vetoed = target; st.vetoed.push(target);
     this.broadcast();
   }
   startBidding() {
-    const st = this.st, a = st.auction, o = st.order, n = o.length;
-    let opener = null;
-    for (let k = 0; k < n; k++) {
-      const id = o[(st.openerIdx + k) % n]; const p = this.P(id);
-      if (p && p.team.length < st.config.teamSize) { opener = id; st.openerIdx = (st.openerIdx + k + 1) % n; break; }
-    }
+    const st = this.st, a = st.auction;
+    const opener = a.opener || this.pickOpener();
     if (!opener) return this.endAuction();
-    Object.assign(a, { stage: 'bidding', opener, turn: opener, deadline: Date.now() + this.turnMs() });
+    Object.assign(a, { stage: 'bidding', opener, turn: opener, deadline: Date.now() + this.turnMs(), withdrawn: a.vetoed ? [a.vetoed] : [] });
     if (!this.P(opener).connected) return this.forceBid(opener, 1);
     this.broadcast();
   }
@@ -262,7 +335,7 @@ class Game {
     w.goats -= a.bid;
     let discarded = false;
     if (w.team.length < st.config.teamSize) w.team.push(a.lot); else discarded = true;
-    const rec = { lot: a.lot, by: w.id, amount: a.bid, discarded };
+    const rec = { lot: a.lot, by: w.id, amount: a.bid, discarded, vetoed: a.vetoed };
     st.history.unshift(rec); a.last = rec;
     Object.assign(a, { stage: 'sold', turn: null, deadline: Date.now() + SOLD_MS });
     this.broadcast();
@@ -271,19 +344,106 @@ class Game {
     const st = this.st;
     const inc = st.players.filter(p => p.team.length < st.config.teamSize);
     st.warn = inc.length ? `Se acabaron las personas de la ruleta y no han completado su equipo: ${inc.map(p => p.name).join(', ')}.` : null;
+    st.leftovers = st.auction.wheel.concat(st.history.filter(h => h.discarded).map(h => h.lot));
+    this.startSwap();
+  }
+
+  // ---------- intercambio ----------
+  startSwap() {
+    const st = this.st, h = this.P(this.priv.swapHolder);
+    if (!h) return this.startVote();
+    const usable = h.team.length && st.players.some(q => q.id !== h.id && q.team.length);
+    st.phase = 'swap';
+    st.swap = { stage: 'secret', deadline: Date.now() + (h.connected && usable ? SWAP_MS : 5000 * K), info: null, spin: null };
+    this.priv.swapOffer = null; this.priv.swapSkipped = false;
+    this.broadcast();
+  }
+  swapPick(pid, mineName, target) {
+    const st = this.st, s = st.swap;
+    if (st.phase !== 'swap' || !s || s.stage !== 'secret' || this.priv.swapHolder !== pid || this.priv.swapOffer) return;
+    const h = this.P(pid), t = this.P(target);
+    if (!h || !t || t.id === pid || !t.team.length || !h.team.includes(mineName)) return;
+    this.priv.swapOffer = { mine: mineName, target, theirs: pick(t.team) };
+    s.deadline = Math.max(s.deadline, Date.now() + SWAP_CONFIRM_MS);
+    this.broadcast();
+  }
+  swapSkip(pid) {
+    const st = this.st, s = st.swap;
+    if (st.phase !== 'swap' || !s || s.stage !== 'secret' || this.priv.swapHolder !== pid) return;
+    this.priv.swapSkipped = true;
+    this.startVote();
+  }
+  swapDecide(pid, accept) {
+    const st = this.st, s = st.swap, o = this.priv.swapOffer;
+    if (st.phase !== 'swap' || !s || s.stage !== 'secret' || this.priv.swapHolder !== pid || !o) return;
+    if (!accept) { this.priv.swapOffer = null; this.priv.swapSkipped = true; return this.startVote(); }
+    const h = this.P(pid), t = this.P(o.target);
+    const i = h.team.indexOf(o.mine), j = t.team.indexOf(o.theirs);
+    if (i < 0 || j < 0) return this.startVote();
+    h.team[i] = o.theirs; t.team[j] = o.mine;
+    s.info = { by: pid, target: o.target, gave: o.mine, got: o.theirs, respin: null };
+    this.priv.swapOffer = null;
+    if (st.leftovers.length && t.connected) { s.stage = 'respin-ask'; s.deadline = Date.now() + RESPIN_ASK_MS; }
+    else { s.stage = 'done'; s.deadline = Date.now() + SWAP_DONE_MS; }
+    this.broadcast();
+  }
+  respinDecide(pid, go) {
+    const st = this.st, s = st.swap;
+    if (st.phase !== 'swap' || !s || s.stage !== 'respin-ask' || s.info.target !== pid) return;
+    if (!go) { s.info.respin = { declined: true }; s.stage = 'done'; s.deadline = Date.now() + SWAP_DONE_MS; return this.broadcast(); }
+    const idx = Math.floor(Math.random() * st.leftovers.length);
+    s.spin = { key: uid(), names: st.leftovers.slice(), index: idx, endsAt: Date.now() + SPIN_MS };
+    s.stage = 'spinning'; s.deadline = Date.now() + SPIN_MS;
+    this.broadcast();
+  }
+  applyRespin() {
+    const st = this.st, s = st.swap, t = this.P(s.info.target);
+    const got = s.spin.names[s.spin.index];
+    const j = t.team.indexOf(s.info.gave);
+    if (j >= 0) {
+      t.team[j] = got;
+      st.leftovers = st.leftovers.filter(n => n !== got).concat([s.info.gave]);
+      s.info.respin = { out: s.info.gave, in: got };
+    }
+    s.stage = 'done'; s.deadline = Date.now() + SWAP_DONE_MS;
+    this.broadcast();
+  }
+
+  // ---------- ranking final ----------
+  startVote() {
+    const st = this.st;
     const teams = st.players.filter(p => p.team.length).length;
     st.players.forEach(p => { p.voteDone = false; });
-    st.phase = 'vote'; st.voteEndsAt = Date.now() + Math.max(VOTE_MIN_MS, Math.max(0, teams - 1) * VOTE_PER_TEAM_MS);
+    this.priv.votes = {};
+    st.phase = 'vote'; st.voteEndsAt = Date.now() + Math.max(VOTE_MIN_MS, teams * VOTE_PER_TEAM_MS);
     this.broadcast();
   }
   endVote() {
-    const st = this.st;
+    const st = this.st, votes = this.priv.votes;
+    const teams = st.players.filter(p => p.team.length);
+    const pts = {}, cnt = {};
+    teams.forEach(t => { pts[t.id] = 0; cnt[t.id] = 0; });
+    for (const order of Object.values(votes)) {
+      const n = order.length;
+      order.forEach((id, i) => { if (id in pts) { pts[id] += n - i; cnt[id]++; } });
+    }
+    // desempate: puntos medios por ranking recibido
     const rows = st.players.map(p => {
-      const got = Object.entries(this.priv.votes).filter(([vid]) => vid !== p.id).map(([, g]) => g[p.id]).filter(v => typeof v === 'number');
-      return { id: p.id, name: p.name, team: p.team.slice(), avg: got.length ? r9(avg(got)) : null, votes: got.length };
+      const has = p.team.length > 0;
+      return { id: p.id, name: p.name, team: p.team.slice(), points: has ? pts[p.id] : null, votes: has ? cnt[p.id] : 0, avg: has && cnt[p.id] ? pts[p.id] / cnt[p.id] : 0 };
     });
-    rows.sort((x, y) => ((y.avg ?? -1) - (x.avg ?? -1)) || (y.votes - x.votes));
-    st.results = { key: uid(), rows };
+    const r6 = x => Math.round(x * 1e6);
+    rows.sort((x, y) => ((y.points ?? -1) - (x.points ?? -1)) || (r6(y.avg) - r6(x.avg)));
+    let tiedBroken = false;
+    rows.forEach((r, i) => {
+      const prev = rows[i - 1];
+      if (prev && prev.points === r.points && r6(prev.avg) === r6(r.avg)) r.pos = prev.pos;
+      else { r.pos = i + 1; if (prev && prev.points === r.points) { r.byTiebreak = true; prev.byTiebreak = true; tiedBroken = true; } }
+    });
+    st.results = {
+      key: uid(), rows, ballots: votes, tiedBroken,
+      reveal: { veto: this.priv.vetoHolder, vetoed: st.vetoed.slice(), swap: this.priv.swapHolder, swapUsed: !!(st.swap && st.swap.info) }
+    };
     st.phase = 'results';
     this.broadcast();
   }
@@ -323,6 +483,8 @@ wss.on('connection', ws => {
       g.join(ws, m.name, cid);
     } else if (m.t === 'leave') {
       if (ws.game) ws.game.leave(ws);
+    } else if (m.t === 'chat') {
+      if (ws.game) ws.game.say(ws, m.text);
     } else if (ws.game) {
       ws.game.handle(ws.pid, m);
     }
@@ -330,11 +492,8 @@ wss.on('connection', ws => {
   ws.on('close', () => { if (ws.game) ws.game.drop(ws); });
 });
 
-// temporizadores de todas las partidas
 setInterval(() => { const t = Date.now(); for (const g of games.values()) { try { g.tick(t); } catch (e) { console.error(e); } } }, 200);
-// detectar móviles que se han quedado colgados
 setInterval(() => { for (const ws of wss.clients) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; try { ws.ping(); } catch (e) {} } }, 15000);
-// limpiar partidas abandonadas
 setInterval(() => { const t = Date.now(); for (const [c, g] of games) if (!g.sockets.size && t - g.lastActive > GAME_IDLE_MS) games.delete(c); }, 60000);
 
 server.listen(PORT, () => console.log('Las Cabras escuchando en el puerto ' + PORT));
