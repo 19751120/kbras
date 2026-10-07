@@ -179,6 +179,36 @@ tr.real td{font-weight:800}
 .ballots li{padding:6px 0;border-bottom:1px dashed var(--linea);font-size:.9rem}
 .ballots ul{list-style:none;margin:0;padding:0}
 #ballots,#secrets{text-align:left}
+/* premios */
+.awards{display:grid;gap:10px;margin-top:6px;text-align:left}
+#awards h3{text-align:left}
+.award{display:flex;gap:12px;align-items:center;background:var(--tiza);border:1px solid var(--linea);border-radius:14px;padding:10px 12px;opacity:0;transform:translateY(10px) scale(.97);transition:opacity .45s,transform .45s}
+.award.show{opacity:1;transform:none}
+.award .ai{font-size:1.9rem;line-height:1}
+.award .at{font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--suave)}
+.award .aw{font-family:var(--disp);font-size:1.15rem;line-height:1.1}
+.award .ax{font-size:.88rem}
+/* reacciones */
+.reactdock{position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:14;display:flex;align-items:center;gap:6px;flex-direction:row-reverse;pointer-events:none}
+.reactdock>*{pointer-events:auto}
+body[data-phase=vote] .reactdock{bottom:calc(124px + env(safe-area-inset-bottom,0px))}
+.reactdock .rmain{width:52px;height:52px;border-radius:50%;border:0;background:var(--pasto);color:#fff;font-size:1.6rem;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.reactdock .tray{display:flex;gap:4px;background:var(--papel);border:1px solid var(--linea);border-radius:999px;padding:5px;box-shadow:0 4px 14px rgba(0,0,0,.18);transform-origin:right center;transition:transform .18s,opacity .18s}
+.reactdock .tray[hidden]{display:none}
+.reactdock .tray button{width:42px;height:42px;border:0;background:transparent;border-radius:50%;font-size:1.45rem}
+.reactdock .tray button:active{transform:scale(1.25);background:var(--tiza)}
+.floater{position:fixed;bottom:90px;z-index:13;pointer-events:none;display:flex;flex-direction:column;align-items:center;animation:floatup 2.6s ease-out forwards}
+.floater .fe{font-size:2.4rem;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.25))}
+.floater .fn{font-size:.7rem;font-weight:800;background:var(--tinta);color:var(--tiza);border-radius:99px;padding:1px 7px;margin-top:2px;white-space:nowrap}
+@keyframes floatup{0%{transform:translateY(0) scale(.6);opacity:0}12%{opacity:1;transform:translateY(-30px) scale(1.15)}100%{transform:translateY(-55vh) translateX(var(--dx,0)) scale(1);opacity:0}}
+/* tensión */
+.bar.urgent i{animation:urg .5s ease-in-out infinite alternate}
+@keyframes urg{to{opacity:.35}}
+.lot.tense{animation:shake .5s ease-in-out infinite}
+.yourturn.tense{border-color:var(--rojo);animation:flash .5s ease-in-out infinite alternate}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-2px) rotate(-.3deg)}75%{transform:translateX(2px) rotate(.3deg)}}
+@keyframes flash{to{box-shadow:0 0 0 4px rgba(184,58,40,.35)}}
+.top .clock.pulse{animation:urg .5s ease-in-out infinite alternate}
 /* Chat */
 .chatbtn{position:relative;border:0;background:rgba(255,255,255,.16);color:#fff;border-radius:10px;padding:5px 9px;font-size:1.05rem}
 .chatbtn .badge{position:absolute;top:-6px;right:-6px;background:var(--rojo);color:#fff;font-size:.7rem;font-weight:800;border-radius:99px;min-width:18px;height:18px;line-height:18px;text-align:center;padding:0 4px}
@@ -276,6 +306,23 @@ function connectWS() {
   ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch (x) { return; } onServer(d); };
   ws.onclose = () => { connected = false; renderTop(); wsTries++; setTimeout(connectWS, Math.min(5000, 600 * wsTries)); };
 }
+const REACTIONS = ['🐐', '🔥', '😂', '💸', '😱', '👏'];
+let trayOpen = false, floaters = 0;
+function renderReactDock() {
+  const d = $('#reactdock'); if (!d) return;
+  d.innerHTML = `<button class="rmain" data-act="react-toggle" aria-label="Reaccionar" aria-expanded="${trayOpen}">${trayOpen ? '✕' : '😀'}</button>
+    <div class="tray" ${trayOpen ? '' : 'hidden'}>${REACTIONS.map(e => `<button data-act="react" data-e="${e}" aria-label="Reaccionar con ${e}">${e}</button>`).join('')}</div>`;
+}
+function spawnFloat(e, by) {
+  if (floaters > 40 || !REACTIONS.includes(e)) return;
+  const p = S && S.players.find(x => x.id === by);
+  const el = document.createElement('div'); el.className = 'floater';
+  el.style.left = (8 + Math.random() * 74) + 'vw';
+  el.style.setProperty('--dx', ((Math.random() - 0.5) * 60).toFixed(0) + 'px');
+  el.innerHTML = `<span class="fe">${e}</span>${p ? `<span class="fn">${esc(by === me ? 'Tú' : p.name)}</span>` : ''}`;
+  document.body.appendChild(el); floaters++;
+  setTimeout(() => { el.remove(); floaters--; }, 2700);
+}
 function onServer(d) {
   if (d.t === 'state') {
     pending = null; offset = d.now - Date.now(); me = d.you; MINE = d.mine || {};
@@ -288,6 +335,7 @@ function onServer(d) {
     if (d.code === 'notfound' || d.code === 'started' || d.code === 'full' || d.code === 'name') session.set(null);
     S = null; rendered = null; showHome(d.msg);
   } else if (d.t === 'toast') toast(d.msg);
+  else if (d.t === 'react') spawnFloat(d.e, d.by);
   else if (d.t === 'chatlog') { chatLog = d.list || []; renderChat(); }
   else if (d.t === 'chat') {
     chatLog.push(d.m); if (chatLog.length > 60) chatLog.shift(); renderChat();
@@ -305,9 +353,9 @@ function lobbyCheck() {
   const c = S.config; const n = S.players.filter(p => p.connected).length;
   if (n < 2) return { ok: false, msg: 'Hacen falta al menos 2 jugadores conectados.' };
   if (c.goats < c.teamSize) return { ok: false, msg: 'Cada jugador necesita al menos tantas cabras como personas en su equipo.' };
-  const need = n * c.teamSize;
-  if (c.people.length < need) return { ok: false, msg: `Hay ${c.people.length} personas en la lista y con ${n} jugadores hacen falta al menos ${need}.` };
-  return { ok: true, msg: `Todo listo: ${n} jugadores, ${c.people.length} personas, equipos de ${c.teamSize} y ${c.goats} cabras cada uno.` };
+  const slots = n * c.teamSize, need = slots + n;
+  if (c.people.length < need) return { ok: false, msg: `Hay ${c.people.length} chicas en la lista. Con ${n} jugadores y equipos de ${c.teamSize} hacen falta al menos ${need}: ${slots} para los equipos y ${n} de margen por si alguna se descarta.` };
+  return { ok: true, msg: `Todo listo: ${n} jugadores, ${c.people.length} chicas, equipos de ${c.teamSize} y ${c.goats} cabras cada uno.` };
 }
 
 /* ============ AUDIO / VIBRACIÓN ============ */
@@ -325,6 +373,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 /* ============ PANTALLA DE INICIO ============ */
 function showHome(err) {
+  delete document.body.dataset.phase;
   const qc = new URLSearchParams(location.search).get('c') || '';
   const joinMode = !!qc;
   $('#app').innerHTML = `
@@ -364,6 +413,7 @@ function showHome(err) {
 /* ============ JUEGO: estructura ============ */
 function enterGame() {
   $('#app').innerHTML = `<header class="top" id="top"></header><div id="pausebar"></div><main id="main"></main>
+  <div class="reactdock" id="reactdock"></div>
   <div class="peek" id="peek" data-act="chat-open"></div>
   <section class="chat" id="chat" hidden aria-label="Chat">
     <div class="chat-head"><h3>Chat</h3><button data-act="chat-close" aria-label="Cerrar chat">✕</button></div>
@@ -377,6 +427,7 @@ function enterGame() {
   $('#app').onclick = onClick;
   $('#app').oninput = onInput;
   keepAwake();
+  trayOpen = false; renderReactDock();
 }
 
 const PHASE_LABEL = { lobby: 'Sala de espera', auction: 'Subasta', swap: 'Intercambio', vote: 'Ranking final', results: 'Resultados' };
@@ -412,6 +463,7 @@ function renderTop() {
 
 function render() {
   if (!S || !$('#main')) return;
+  document.body.dataset.phase = S.phase;
   const key = S.phase + '|' + S.round + '|' + (S.results ? S.results.key : '') + '|' + (isHost() ? 'h' : 'p');
   if (rendered !== key) {
     rendered = key; stageMode = null; lastSpinKey = null;
@@ -434,7 +486,33 @@ function updateTimers() {
   document.querySelectorAll('[data-bar]').forEach(el => {
     const ms = remaining(+el.dataset.bar); const pct = Math.max(0, Math.min(100, ms / (+el.dataset.total) * 100));
     el.firstElementChild.style.width = pct + '%'; el.classList.toggle('low', ms < 3500);
+    el.classList.toggle('urgent', ms > 0 && ms <= 3000 && !(S && S.paused));
   });
+  tension();
+}
+let lastTick = null;
+function tension() {
+  if (!S) return;
+  const a = S.auction, bidding = S.phase === 'auction' && a && a.stage === 'bidding' && !S.paused;
+  const ms = bidding ? remaining(a.deadline) : 0, urgent = bidding && ms > 0 && ms <= 3000;
+  const lot = document.querySelector('#stage .lot'); if (lot) lot.classList.toggle('tense', urgent);
+  const yt = document.querySelector('#action .yourturn'); if (yt) yt.classList.toggle('tense', urgent);
+  const clock = document.querySelector('.top .clock');
+  if (clock) clock.classList.toggle('pulse', urgent || (S.phase === 'vote' && remaining(S.voteEndsAt) <= 10000 && remaining(S.voteEndsAt) > 0));
+  if (!urgent) return;
+  const sec = Math.ceil(ms / 1000), key = a.spin.key + ':' + a.bid + ':' + a.turn + ':' + sec;
+  if (key === lastTick) return;
+  lastTick = key; tick(a.turn === me, sec);
+}
+function tick(mine, sec) {
+  if (mine) { try { navigator.vibrate && navigator.vibrate(sec === 1 ? 120 : 45); } catch (e) {} }
+  if (!actx) return;
+  try {
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = 'square'; o.frequency.value = sec === 1 ? 1320 : 990;
+    g.gain.setValueAtTime(mine ? .12 : .035, t); g.gain.exponentialRampToValueAtTime(.001, t + .07);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + .08);
+  } catch (e) {}
 }
 setInterval(updateTimers, 200);
 
@@ -515,6 +593,8 @@ const BUILD = {
           <span class="tm muted">${r.team.length ? r.team.map(esc).join(', ') : ''}</span>
         </li>`).join('')}
       </ol>
+      ${(R.awards || []).length ? `<div class="panel oracle" id="awards"><h3>🏅 Premios de la noche</h3><div class="awards">${R.awards.map(a => `
+        <div class="award"><span class="ai">${a.icon}</span><div><div class="at">${esc(a.title)}</div><div class="aw">${a.who.length ? listY(a.who.map(id => esc(realName(id)))) : '—'}</div><div class="ax muted">${esc(a.text)}</div></div></div>`).join('')}</div></div>` : ''}
       <div class="panel oracle ballots" id="ballots">
         <h3 style="margin-bottom:6px">El ranking de cada uno</h3>
         ${Object.keys(R.ballots).length ? `<ul>${Object.entries(R.ballots).map(([vid, order]) => `<li><b>${esc(realName(vid))}</b>: ${order.map((id, i) => `${i + 1}º ${esc(realName(id))}`).join(', ')}</li>`).join('')}</ul>` : '<p class="muted small" style="margin:0">Nadie envió su ranking a tiempo.</p>'}
@@ -530,7 +610,14 @@ const BUILD = {
     const items = [...document.querySelectorAll('#reslist li')];
     let k = n - 1; const step = () => {
       if (!$('#reslist')) return;
-      if (k < 0) { $('#ballots').classList.add('show'); setTimeout(() => $('#secrets') && $('#secrets').classList.add('show'), 700); return; }
+      if (k < 0) {
+        const aw = $('#awards'), cards = aw ? [...aw.querySelectorAll('.award')] : [];
+        if (aw) aw.classList.add('show');
+        cards.forEach((c, i) => setTimeout(() => { c.classList.add('show'); if (i === cards.length - 1) beep(); }, 500 + i * 900));
+        const after = aw ? 900 + cards.length * 900 : 0;
+        setTimeout(() => { $('#ballots') && $('#ballots').classList.add('show'); setTimeout(() => $('#secrets') && $('#secrets').classList.add('show'), 700); }, after);
+        return;
+      }
       items[k].classList.add('show');
       if (k === 0) beep();
       k--; setTimeout(step, k === 0 ? 2200 : 1300);
@@ -730,6 +817,7 @@ function updateHist() {
 }
 
 /* ============ Intercambio ============ */
+function listY(a) { return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' y ' + a[a.length - 1]; }
 function realName(id) { const p = S.players.find(x => x.id === id); return p ? p.name + (id === me ? ' (tú)' : '') : '?'; }
 function teamOf(id) { const p = S.players.find(x => x.id === id); return p ? p.team : []; }
 function updateSwap() {
@@ -838,6 +926,8 @@ function onClick(e) {
       else (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast('Enlace copiado'), () => toast('Código: ' + S.code));
       break;
     }
+    case 'react-toggle': trayOpen = !trayOpen; renderReactDock(); break;
+    case 'react': wsSend({ t: 'react', e: b.dataset.e }); break;
     case 'chat-open': openChat(true); break;
     case 'chat-close': openChat(false); break;
     case 'chat-send': sendChat(); break;
