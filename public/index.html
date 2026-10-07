@@ -151,6 +151,54 @@ th,td{padding:7px 9px;border-bottom:1px solid var(--linea);text-align:center;whi
 th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--papel)}
 tr.real td{font-weight:800}
 
+/* Poderes */
+.power{display:flex;gap:10px;align-items:center;background:#2B2342;color:#F3EEFF;border-radius:14px;padding:10px 12px;font-weight:700;font-size:.92rem}
+.power .ico{font-size:1.3rem}
+.vetobox{background:#2B2342;color:#F3EEFF;border-radius:18px;padding:16px;border:2px solid #8E7CC3}
+.vetobox h3{color:#F3EEFF}
+.vetobox .muted{color:#CFC6E8}
+.vbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.vbtns button{border:2px solid #8E7CC3;background:transparent;color:#F3EEFF;border-radius:12px;padding:10px 14px;font-weight:800}
+.vbtns button.skip{border-color:transparent;text-decoration:underline;font-weight:600}
+.tag.veto{background:#5B3FA0;color:#fff}
+.vetoline{margin:8px 0 0;font-weight:800;color:#5B3FA0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .vetoline{color:#BBA8F0}}
+:root[data-theme="dark"] .vetoline{color:#BBA8F0}
+.selchips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px}
+.selchips button{border:2px solid var(--linea);background:var(--papel);color:var(--tinta);border-radius:999px;padding:8px 14px;font-weight:700}
+.selchips button[aria-pressed=true]{background:#5B3FA0;border-color:#5B3FA0;color:#fff}
+/* Ranking */
+.rk{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--linea)}
+.rk:last-child{border-bottom:0}
+.rk .n{font-family:var(--disp);font-size:1.6rem;width:1.6em;text-align:center;color:var(--pasto2)}
+.rk .info{flex:1;min-width:0}
+.rk .info b{display:block}
+.rk .mv{display:flex;flex-direction:column;gap:4px}
+.rk .mv button{width:44px;height:36px;border-radius:10px;border:2px solid var(--linea);background:var(--papel);font-size:1rem;font-weight:800}
+.rk .mv button:disabled{opacity:.3}
+.ballots li{padding:6px 0;border-bottom:1px dashed var(--linea);font-size:.9rem}
+.ballots ul{list-style:none;margin:0;padding:0}
+#ballots,#secrets{text-align:left}
+/* Chat */
+.chatbtn{position:relative;border:0;background:rgba(255,255,255,.16);color:#fff;border-radius:10px;padding:5px 9px;font-size:1.05rem}
+.chatbtn .badge{position:absolute;top:-6px;right:-6px;background:var(--rojo);color:#fff;font-size:.7rem;font-weight:800;border-radius:99px;min-width:18px;height:18px;line-height:18px;text-align:center;padding:0 4px}
+.chat{position:fixed;inset:auto 0 0 0;z-index:15;max-width:560px;margin:0 auto;background:var(--papel);border-radius:20px 20px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.25);display:flex;flex-direction:column;height:min(78vh,620px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.chat[hidden]{display:none}
+.chat-head{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--linea)}
+.chat-head h3{flex:1}
+.chat-head button{border:0;background:none;font-size:1.4rem;color:var(--suave)}
+.chat-log{flex:1;overflow-y:auto;padding:10px 16px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:85%;background:var(--tiza);border-radius:14px 14px 14px 4px;padding:7px 11px;align-self:flex-start}
+.msg.me{align-self:flex-end;background:var(--heno);color:#1C2620;border-radius:14px 14px 4px 14px}
+.msg .who{font-size:.75rem;font-weight:800;color:var(--pasto2);display:block}
+.msg.me .who{color:#5B4300}
+.phrases{display:flex;gap:8px;overflow-x:auto;padding:8px 16px;border-top:1px solid var(--linea);-webkit-overflow-scrolling:touch}
+.phrases button{flex:none;border:1px solid var(--linea);background:var(--tiza);color:var(--tinta);border-radius:999px;padding:7px 12px;font-size:.85rem;font-weight:600;white-space:nowrap}
+.chat-input{display:flex;gap:8px;padding:8px 16px 12px}
+.chat-input input{flex:1}
+.chat-input button{border:0;background:var(--pasto);color:#fff;border-radius:12px;padding:0 16px;font-weight:800}
+.peek{position:fixed;left:50%;top:calc(64px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:12;background:var(--tinta);color:var(--tiza);border-radius:14px;padding:8px 14px;font-size:.9rem;max-width:88vw;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .25s}
+.peek.on{opacity:1;pointer-events:auto;cursor:pointer}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--tinta);color:var(--tiza);padding:11px 16px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:.25s;z-index:20;max-width:90vw;text-align:center}
 #toast.on{opacity:1;transform:translateX(-50%)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -164,7 +212,7 @@ tr.real td{font-weight:800}
 'use strict';
 const PREFIX = 'lascabras-v1-';
 const SPIN_MS = 4500;
-const turnTotal = () => (S && S.config.turnSecs || 20) * 1000;
+const turnTotal = () => Math.min(10, (S && S.config.turnSecs) || 10) * 1000;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -185,7 +233,22 @@ let offset = 0;      // reloj del anfitrión - reloj local
 let connected = false;
 let code = null, myName = '';
 let rendered = null;
-let voteDraft = {};
+let voteOrder = [], MINE = {}, swapSel = { mine: null, target: null }, lastSwapSpinKey = null;
+let chatLog = [], chatOpen = false, unread = 0, peekT = null;
+const PHRASES = [
+  'Menudo pájaro. Este no da puntada sin hilo.',
+  'QUE CABRÓN, siempre pescando en aguas profundas.',
+  'A ese no le hace falta Tinder, sale de casa y factura.',
+  'Hoy duerme poco y desayuna tarde.',
+  'Este viene con los deberes hechos.',
+  'Ha venido a lo que ha venido.',
+  'Señores, hay que reconocer que el chaval sabe fichar.',
+  'No perdona una.',
+  'Donde pone el ojo, pone el nabo.',
+  'Eso es tirar las cabras.',
+  'Robo a mano armada.',
+  'Yo ahí no me metía ni loco.'
+];
 let bidAmount = 1, bidKey = null, beepKey = null, lastSpinKey = null, stageMode = null;
 let cfgSendT = null;
 const now = () => Date.now() + offset;
@@ -215,7 +278,7 @@ function connectWS() {
 }
 function onServer(d) {
   if (d.t === 'state') {
-    pending = null; offset = d.now - Date.now(); me = d.you;
+    pending = null; offset = d.now - Date.now(); me = d.you; MINE = d.mine || {};
     const first = !S; S = d.s; code = S.code;
     session.set({ code: S.code, name: (S.players.find(p => p.id === me) || {}).name || myName });
     if (first) { enterGame(); try { history.replaceState(null, '', location.pathname + '?c=' + S.code); } catch (e) {} }
@@ -225,6 +288,11 @@ function onServer(d) {
     if (d.code === 'notfound' || d.code === 'started' || d.code === 'full' || d.code === 'name') session.set(null);
     S = null; rendered = null; showHome(d.msg);
   } else if (d.t === 'toast') toast(d.msg);
+  else if (d.t === 'chatlog') { chatLog = d.list || []; renderChat(); }
+  else if (d.t === 'chat') {
+    chatLog.push(d.m); if (chatLog.length > 60) chatLog.shift(); renderChat();
+    if (!chatOpen && d.m.by !== me) { unread++; renderTop(); showPeek(d.m); }
+  }
 }
 setInterval(() => { if (S) wsSend({ t: 'ping' }); }, 60000); // mantiene despierto el servidor gratuito
 function wsSend(m) { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(m)); return true; } return false; }
@@ -252,6 +320,7 @@ function beep() {
 }
 let wakeLock = null;
 async function keepAwake() { try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => wakeLock = null); } } catch (e) {} }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatOpen) openChat(false); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S) keepAwake(); });
 
 /* ============ PANTALLA DE INICIO ============ */
@@ -294,14 +363,23 @@ function showHome(err) {
 
 /* ============ JUEGO: estructura ============ */
 function enterGame() {
-  $('#app').innerHTML = `<header class="top" id="top"></header><div id="pausebar"></div><main id="main"></main>`;
+  $('#app').innerHTML = `<header class="top" id="top"></header><div id="pausebar"></div><main id="main"></main>
+  <div class="peek" id="peek" data-act="chat-open"></div>
+  <section class="chat" id="chat" hidden aria-label="Chat">
+    <div class="chat-head"><h3>Chat</h3><button data-act="chat-close" aria-label="Cerrar chat">✕</button></div>
+    <div class="chat-log" id="chatlog"></div>
+    <div class="phrases">${PHRASES.map((p, i) => `<button data-act="chat-phrase" data-i="${i}">${esc(p)}</button>`).join('')}</div>
+    <div class="chat-input"><input id="chatin" type="text" maxlength="200" placeholder="Escribe algo…" autocomplete="off"><button data-act="chat-send">Enviar</button></div>
+  </section>`;
+  $('#chatin').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendChat(); } });
+  renderChat();
   rendered = null;
   $('#app').onclick = onClick;
   $('#app').oninput = onInput;
   keepAwake();
 }
 
-const PHASE_LABEL = { lobby: 'Sala de espera', auction: 'Subasta', vote: 'Valoración de equipos', results: 'Resultados' };
+const PHASE_LABEL = { lobby: 'Sala de espera', auction: 'Subasta', swap: 'Intercambio', vote: 'Ranking final', results: 'Resultados' };
 function myPlayer() { return S.players.find(p => p.id === me); }
 function pname(id) { const p = S.players.find(x => x.id === id); return p ? (id === me ? 'Tú' : p.name) : '?'; }
 function pobj(id) { return id === me ? 'ti' : pname(id); }
@@ -310,6 +388,7 @@ function sMax(p) { const h = S.config.teamSize - p.team.length; return h > 0 ? p
 function phaseDeadline() {
   if (!S) return 0;
   if (S.phase === 'vote') return S.voteEndsAt;
+  if (S.phase === 'swap' && S.swap) return S.swap.deadline;
   if (S.phase === 'auction' && S.auction) return S.auction.deadline;
   return 0;
 }
@@ -319,11 +398,12 @@ function renderTop() {
   const top = $('#top'); if (!top || !S) return;
   const dl = phaseDeadline();
   const conn = connected;
-  const canPause = isHost() && ['auction', 'vote'].includes(S.phase);
+  const canPause = isHost() && ['auction', 'swap', 'vote'].includes(S.phase);
   top.innerHTML = `
     <span class="dot ${conn ? '' : 'off'}" title="${conn ? 'Conectado' : 'Reconectando'}"></span>
     <span class="code" aria-label="Código de partida">${esc(S.code)}</span>
     <span class="phase">${PHASE_LABEL[S.phase]}</span>
+    <button class="chatbtn" data-act="chat-open" aria-label="Abrir chat">💬${unread ? `<span class="badge">${unread > 9 ? '9+' : unread}</span>` : ''}</button>
     ${canPause ? `<button class="pausebtn" data-act="pause">${S.paused ? 'Reanudar' : 'Pausar'}</button>` : ''}
     ${dl ? `<span class="clock" data-deadline="${dl}"></span>` : ''}`;
   $('#pausebar').innerHTML = S.paused ? `<div class="paused-banner">Partida en pausa${isHost() ? '' : '. Espera a que el anfitrión la reanude.'}</div>` : (!conn ? `<div class="paused-banner">Sin conexión. Reconectando…</div>` : '');
@@ -335,7 +415,8 @@ function render() {
   const key = S.phase + '|' + S.round + '|' + (S.results ? S.results.key : '') + '|' + (isHost() ? 'h' : 'p');
   if (rendered !== key) {
     rendered = key; stageMode = null; lastSpinKey = null;
-    if (S.phase === 'vote') voteDraft = {};
+    if (S.phase === 'vote') voteOrder = [];
+    if (S.phase === 'swap') { swapSel = { mine: null, target: null }; lastSwapSpinKey = null; }
     BUILD[S.phase]();
     window.scrollTo(0, 0);
   }
@@ -377,9 +458,9 @@ const BUILD = {
         <div class="grid2">
           <div><label class="f" for="cfg-team">Personas por equipo</label><input id="cfg-team" type="number" min="1" max="10" inputmode="numeric" value="${S.config.teamSize}"></div>
           <div><label class="f" for="cfg-goats">Cabras por jugador</label><input id="cfg-goats" type="number" min="1" max="999" inputmode="numeric" value="${S.config.goats}"></div>
-          <div><label class="f" for="cfg-turn">Segundos por turno</label><input id="cfg-turn" type="number" min="5" max="120" inputmode="numeric" value="${S.config.turnSecs || 20}"></div>
+          <div><label class="f" for="cfg-turn">Segundos por turno (máx. 10)</label><input id="cfg-turn" type="number" min="5" max="10" inputmode="numeric" value="${S.config.turnSecs || 10}"></div>
         </div>
-        <p class="small muted">Al final, cada jugador puntuará de 0 a 10 a los equipos de los demás.</p>
+        <p class="small muted">Al empezar se reparten en secreto un derecho de veto y uno de intercambio. Al final, cada uno ordena a los equipos rivales.</p>
       </div>
       <p class="hint" id="lhint"></p>
       <button class="btn" data-act="start" id="startbtn">Empezar partida</button>
@@ -392,53 +473,64 @@ const BUILD = {
   auction() {
     $('#main').innerHTML = `
     <div class="stack">
+      <div id="powers"></div>
       <div id="stage"></div>
       <div id="action"></div>
       <div class="panel teams"><h3 style="margin-bottom:4px">Equipos</h3><div id="teams"></div></div>
       <div class="panel hist" id="hist"></div>
     </div>`;
   },
-  vote() {
-    const others = S.players.filter(p => p.id !== me && p.team.length);
+  swap() {
     $('#main').innerHTML = `
     <div class="stack">
-      <div><h2>Puntúa a los equipos rivales</h2><p class="muted">De 0 a 10, en secreto. Al tuyo no lo puntúas. Gana el equipo con mejor media.</p></div>
-      ${S.warn ? `<p class="warn">${esc(S.warn)}</p>` : ''}
-      <div class="panel" id="votelist">
-        ${others.length ? others.map(p => `
-        <div class="rate unset" data-v="${esc(p.id)}">
-          <div class="rate-head"><span class="rate-name">Equipo de ${esc(p.name)}</span><button class="linkbtn" data-act="vote-clear" data-id="${esc(p.id)}" hidden>Quitar nota</button><span class="rate-val">—</span></div>
-          <p class="small" style="margin:2px 0 4px">${p.team.map(esc).join(', ')}</p>
-          <input type="range" min="0" max="10" step="1" value="5" data-vote="${esc(p.id)}" aria-label="Nota para el equipo de ${esc(p.name)}">
-          <div class="scale"><span>0</span><span>5</span><span>10</span></div>
-        </div>`).join('') : '<p class="muted">No hay equipos rivales que puntuar.</p>'}
-      </div>
-      <div class="sticky-foot"><p class="small muted" id="vprog" style="text-align:center"></p><button class="btn" data-act="vote-submit" id="vsub">Enviar notas</button></div>
+      <div id="swapbox"></div>
+      <div class="panel teams"><h3 style="margin-bottom:4px">Equipos</h3><div id="teams"></div></div>
     </div>`;
+  },
+  vote() {
+    const rivals = S.players.filter(p => p.id !== me && p.team.length);
+    if (!voteOrder.length) voteOrder = shuffle(rivals.map(p => p.id));
+    const n = rivals.length;
+    $('#main').innerHTML = `
+    <div class="stack">
+      <div><h2>Ordena los equipos rivales</h2><p class="muted">Arriba el que crees que ha quedado mejor. El 1º se lleva ${n} ${n === 1 ? 'punto' : 'puntos'}, el 2º ${Math.max(0, n - 1)} y así sucesivamente. Tu equipo no lo ordenas. Al final todos verán el ranking de cada uno.</p></div>
+      ${S.warn ? `<p class="warn">${esc(S.warn)}</p>` : ''}
+      <div class="panel" id="rklist"></div>
+      <div class="sticky-foot"><p class="small muted" id="vprog" style="text-align:center"></p><button class="btn" data-act="vote-submit" id="vsub" ${n ? '' : 'disabled'}>Enviar mi ranking</button></div>
+    </div>`;
+    renderRank();
   },
   results() {
     const R = S.results; const n = R.rows.length;
-    const pos = []; R.rows.forEach((r, i) => { pos[i] = (i > 0 && r.avg === R.rows[i - 1].avg) ? pos[i - 1] : i + 1; });
     $('#main').innerHTML = `
     <div class="stack">
-      <div><h2>Ranking final</h2><p class="muted">Media de las notas que cada equipo ha recibido de los demás.</p></div>
+      <div><h2>Ranking final</h2><p class="muted">Puntos sumados en los rankings de los demás. ${R.tiedBroken ? 'Los empates a puntos se han resuelto por los puntos medios por ranking.' : ''}</p></div>
       <ol class="res" id="reslist">
         ${R.rows.map((r, i) => `
-        <li data-i="${i}" class="${pos[i] === 1 ? 'win' : ''}">
-          <span class="pos">${pos[i] === 1 ? '🏆' : pos[i]}</span>
+        <li data-i="${i}" class="${r.pos === 1 && r.points != null ? 'win' : ''}">
+          <span class="pos">${r.pos === 1 && r.points != null ? '🏆' : r.pos}</span>
           <span class="nm">${esc(r.id === me ? r.name + ' (tú)' : r.name)}</span>
-          <span class="fin">${fmt(r.avg)}</span>
-          <span class="det">${r.votes ? r.votes + (r.votes === 1 ? ' nota recibida' : ' notas recibidas') : 'Sin notas'}</span>
-          <span class="tm muted">${r.team.length ? r.team.map(esc).join(', ') : 'Sin equipo'}</span>
+          <span class="fin">${r.points == null ? '—' : r.points + '<small style="font-size:.5em"> pts</small>'}</span>
+          <span class="det">${r.points == null ? 'Sin equipo' : (r.votes ? `${r.votes} ${r.votes === 1 ? 'ranking' : 'rankings'}, media de ${fmt(r.avg)} por ranking` : 'Nadie lo ha ordenado')}${r.byTiebreak ? '. Desempatado por media' : ''}</span>
+          <span class="tm muted">${r.team.length ? r.team.map(esc).join(', ') : ''}</span>
         </li>`).join('')}
       </ol>
+      <div class="panel oracle ballots" id="ballots">
+        <h3 style="margin-bottom:6px">El ranking de cada uno</h3>
+        ${Object.keys(R.ballots).length ? `<ul>${Object.entries(R.ballots).map(([vid, order]) => `<li><b>${esc(realName(vid))}</b>: ${order.map((id, i) => `${i + 1}º ${esc(realName(id))}`).join(', ')}</li>`).join('')}</ul>` : '<p class="muted small" style="margin:0">Nadie envió su ranking a tiempo.</p>'}
+      </div>
+      <div class="panel oracle" id="secrets">
+        <h3 style="margin-bottom:6px">🤫 Los secretos de la partida</h3>
+        <p style="margin:0 0 6px">${R.reveal.veto ? `El veto lo tenía <b>${esc(realName(R.reveal.veto))}</b>${R.reveal.vetoed.length ? ` y vetó a ${R.reveal.vetoed.map(id => esc(realName(id))).join(', ')}` : ' y no lo llegó a usar'}.` : 'No hubo veto: hacen falta al menos 3 jugadores.'}</p>
+        <p style="margin:0">${R.reveal.swap ? `El intercambio lo tenía <b>${esc(realName(R.reveal.swap))}</b> y ${R.reveal.swapUsed ? 'lo usó' : 'no lo usó'}.` : 'No hubo intercambio.'}</p>
+      </div>
       ${isHost() ? `<button class="btn" data-act="new-game">Nueva partida con los mismos</button><button class="btn sec" data-act="to-lobby">Volver a la sala</button>` : `<p class="muted" style="text-align:center">El anfitrión decidirá si jugáis otra.</p>`}
       <button class="linkbtn" data-act="leave" style="display:block;margin:0 auto">Salir de la partida</button>
     </div>`;
     const items = [...document.querySelectorAll('#reslist li')];
     let k = n - 1; const step = () => {
       if (!$('#reslist')) return;
-      if (k < 0) return;
+      if (k < 0) { $('#ballots').classList.add('show'); setTimeout(() => $('#secrets') && $('#secrets').classList.add('show'), 700); return; }
       items[k].classList.add('show');
       if (k === 0) beep();
       k--; setTimeout(step, k === 0 ? 2200 : 1300);
@@ -446,6 +538,17 @@ const BUILD = {
     setTimeout(step, 600);
   }
 };
+
+function renderRank() {
+  const box = $('#rklist'); if (!box) return;
+  const locked = !!(myPlayer() && myPlayer().voteDone);
+  if (!voteOrder.length) { box.innerHTML = '<p class="muted" style="margin:0">No hay equipos rivales que ordenar.</p>'; return; }
+  box.innerHTML = voteOrder.map((id, i) => {
+    const p = S.players.find(x => x.id === id); if (!p) return '';
+    return `<div class="rk"><span class="n">${i + 1}</span><div class="info"><b>Equipo de ${esc(p.name)}</b><span class="small muted">${p.team.map(esc).join(', ')}</span></div>
+      <div class="mv"><button data-act="rk-up" data-i="${i}" aria-label="Subir" ${i === 0 || locked ? 'disabled' : ''}>▲</button><button data-act="rk-down" data-i="${i}" aria-label="Bajar" ${i === voteOrder.length - 1 || locked ? 'disabled' : ''}>▼</button></div></div>`;
+  }).join('');
+}
 
 /* ============ Fases: actualización ============ */
 const UPDATE = {
@@ -455,18 +558,18 @@ const UPDATE = {
     if (isHost()) { const c = lobbyCheck(); $('#lhint').textContent = c.msg; $('#lhint').className = 'hint' + (c.ok ? '' : ' bad'); $('#startbtn').disabled = !c.ok; }
     else {
       const c = S.config;
-      $('#cfgview').innerHTML = `<p style="margin:0 0 8px">Equipos de <b>${c.teamSize}</b>, <b>${c.goats}</b> cabras por jugador y <b>${c.turnSecs || 20}</b> s por turno.</p>
+      $('#cfgview').innerHTML = `<p style="margin:0 0 8px">Equipos de <b>${c.teamSize}</b>, <b>${c.goats}</b> cabras por jugador y <b>${c.turnSecs || 10}</b> s por turno. Al empezar se reparten en secreto un veto y un intercambio.</p>
         ${c.people.length ? `<div class="chips">${c.people.map(n => `<span class="chip">${esc(n)}</span>`).join('')}</div>` : '<p class="muted small" style="margin:0">El anfitrión aún no ha añadido personas.</p>'}`;
     }
   },
-  auction() { updateStage(); updateAction(); updateTeams(); updateHist(); },
+  auction() { updatePowers(); updateStage(); updateAction(); updateTeams(); updateHist(); },
+  swap() { updateSwap(); updateTeams(); },
   vote() {
-    const mine = myPlayer(); const done = S.players.filter(p => p.voteDone).length;
-    $('#vprog').textContent = `${done} de ${S.players.length} han enviado sus notas`;
-    if (mine && mine.voteDone) {
-      $('#votelist').classList.add('locked'); $('#vsub').disabled = true; $('#vsub').textContent = 'Notas enviadas';
-      document.querySelectorAll('[data-vote]').forEach(i => i.disabled = true);
-    }
+    const mine = myPlayer();
+    const voters = S.players.filter(x => S.players.some(q => q.id !== x.id && q.team.length));
+    const done = voters.filter(p => p.voteDone).length;
+    $('#vprog').textContent = `${done} de ${voters.length} han enviado su ranking`;
+    if (mine && mine.voteDone) { $('#vsub').disabled = true; $('#vsub').textContent = 'Ranking enviado'; renderRank(); }
   }
 };
 
@@ -489,6 +592,16 @@ function wheelSVG(names) {
   return `<svg viewBox="-150 -150 300 300" role="img" aria-label="Ruleta">${segs}<circle r="20" fill="var(--pasto)"/><text text-anchor="middle" dominant-baseline="central" font-size="20">🐐</text></svg>`;
 }
 
+function updatePowers() {
+  const el = $('#powers'); if (!el) return;
+  let h = '';
+  if (MINE.veto) {
+    const left = S.players.filter(p => p.id !== me && !S.vetoed.includes(p.id)).map(p => esc(p.name));
+    h += `<div class="power"><span class="ico">🤫</span><span>Tienes el <b>derecho de veto</b> y nadie más lo sabe. ${left.length ? 'Puedes vetar todavía a: ' + left.join(', ') + '.' : 'Ya has vetado a todos.'}</span></div>`;
+  }
+  if (MINE.swap) h += `<div class="power" style="margin-top:8px"><span class="ico">🔄</span><span>Tienes el <b>derecho de intercambio</b> y nadie más lo sabe. Podrás usarlo cuando se completen los equipos.</span></div>`;
+  el.innerHTML = h;
+}
 function updateStage() {
   const a = S.auction, el = $('#stage');
   if (a.stage === 'spinning') {
@@ -508,6 +621,15 @@ function updateStage() {
     return;
   }
   stageMode = a.stage;
+  const vline = a.vetoed ? `<p class="vetoline">🚫 ${a.vetoed === me ? 'Estás vetado en esta ronda' : esc(pname(a.vetoed)) + ' está vetado en esta ronda'}</p>` : '';
+  if (a.stage === 'veto') {
+    el.innerHTML = `<div class="panel lot">
+      <p class="kicker">Ha salido</p><div class="name">${esc(a.lot)}</div>
+      <p class="bidline">Pausa de veto: <b data-deadline="${a.deadline}"></b> s</p>
+      <p class="muted" style="margin:0">Quien tenga el derecho de veto puede usarlo ahora. Abrirá ${a.opener === me ? 'tú' : esc(pname(a.opener))}.</p>
+      ${vline}</div>`;
+    return;
+  }
   if (a.stage === 'pre') {
     el.innerHTML = `<div class="panel lot"><p class="kicker">Empieza la subasta</p><div class="name">${a.wheel.length} personas</div>
       <p class="muted" style="margin:0">La ruleta gira en <b data-deadline="${a.deadline}"></b> s</p>
@@ -517,6 +639,7 @@ function updateStage() {
       <p class="kicker">En subasta</p><div class="name">${esc(a.lot)}</div>
       <p class="bidline">${a.leader ? `Puja actual <b>${a.bid}</b> 🐐 ${a.leader === me ? 'tuya' : 'de ' + esc(pname(a.leader))}` : (a.opener === me ? 'Abres tú con mínimo 1 🐐' : `Abre ${esc(pname(a.opener))} con mínimo 1 🐐`)}</p>
       <p style="margin:0" class="muted">${a.turn === me ? '<b style="color:var(--tinta)">Te toca a ti</b>' : `Turno de <b style="color:var(--tinta)">${esc(pname(a.turn))}</b>`}</p>
+      ${vline}
       <div class="bar" data-bar="${a.deadline}" data-total="${turnTotal()}"><i></i></div></div>`;
   } else if (a.stage === 'sold') {
     const l = a.last;
@@ -529,7 +652,17 @@ function updateStage() {
 
 function updateAction() {
   const a = S.auction, el = $('#action'), mine = myPlayer();
+  if (a.stage === 'veto' && MINE.veto && mine) {
+    if (a.vetoed) { el.innerHTML = `<div class="vetobox"><h3>🤫 Veto usado</h3><p class="muted" style="margin:4px 0 0">Has vetado a <b>${esc(pname(a.vetoed))}</b> en esta ronda. Nadie sabe que has sido tú.</p></div>`; return; }
+    const targets = S.players.filter(p => p.id !== me && p.id !== a.opener && !S.vetoed.includes(p.id));
+    el.innerHTML = `<div class="vetobox"><h3>🤫 ¿Quieres vetar a alguien?</h3>
+      <p class="muted" style="margin:4px 0 0">El vetado no podrá pujar por ${esc(a.lot)}. Solo puedes vetar una vez a cada jugador en toda la partida y nunca al que abre la ronda.</p>
+      <div class="vbtns">${targets.length ? targets.map(p => `<button data-act="veto" data-id="${esc(p.id)}">${esc(p.name)}</button>`).join('') : '<span class="muted">No queda nadie a quien puedas vetar en esta ronda.</span>'}</div>
+      <div class="bar" data-bar="${a.deadline}" data-total="5000"><i></i></div></div>`;
+    updateTimers(); return;
+  }
   if (a.stage !== 'bidding' || !mine) { el.innerHTML = ''; return; }
+  if (a.vetoed === me) { el.innerHTML = `<p class="vetoline" style="text-align:center">🚫 Estás vetado: no puedes pujar por ${esc(a.lot)}.</p>`; return; }
   if (a.turn !== me) {
     const w = a.withdrawn.filter(id => id !== a.leader);
     el.innerHTML = a.withdrawn.includes(me) ? `<p class="muted" style="text-align:center;margin:0">Te has retirado de esta persona.</p>` :
@@ -573,7 +706,8 @@ function submitBid() {
 }
 
 function updateTeams() {
-  const a = S.auction, ts = S.config.teamSize;
+  const a = S.auction || {}, ts = S.config.teamSize;
+  if (S.phase !== 'auction') a.stage = null;
   $('#teams').innerHTML = S.order.map(id => {
     const p = S.players.find(x => x.id === id); if (!p) return '';
     const slots = Math.max(0, ts - p.team.length);
@@ -581,8 +715,9 @@ function updateTeams() {
     if (a.stage === 'bidding') {
       if (a.turn === id) tag = '<span class="tag turn">Su turno</span>';
       else if (a.leader === id) tag = '<span class="tag lead">Lleva la puja</span>';
+      else if (a.vetoed === id) tag = '<span class="tag veto">Vetado</span>';
       else if (a.withdrawn.includes(id)) tag = '<span class="tag">Retirado</span>';
-    }
+    } else if (a && a.stage === 'veto' && a.vetoed === id) tag = '<span class="tag veto">Vetado</span>';
     if (!tag && !slots) tag = '<span class="tag">Completo</span>';
     return `<div class="pl"><div class="pl-head"><span class="pl-name">${esc(p.name)}${id === me ? ' (tú)' : ''}${online(p) ? '' : ' <span class="muted small">desconectado</span>'}</span>${tag}<span class="pl-goats">${p.goats} 🐐</span></div>
       <div class="chips">${p.team.map(n => `<span class="chip ${id === me ? 'me' : ''}">${esc(n)}</span>`).join('')}${'<span class="chip slot">libre</span>'.repeat(slots)}</div></div>`;
@@ -591,7 +726,101 @@ function updateTeams() {
 
 function updateHist() {
   const h = S.history;
-  $('#hist').innerHTML = `<h3 style="margin-bottom:6px">Historial</h3>` + (h.length ? `<ul>${h.map(r => `<li>${r.discarded ? `<b>${esc(r.lot)}</b> descartada: ${r.by === me ? 'pagaste' : esc(pname(r.by)) + ' pagó'} ${r.amount} 🐐` : `<b>${esc(r.lot)}</b> para ${esc(pobj(r.by))} por ${r.amount} 🐐`}</li>`).join('')}</ul>` : '<p class="small muted" style="margin:0">Todavía no se ha subastado a nadie.</p>');
+  $('#hist').innerHTML = `<h3 style="margin-bottom:6px">Historial</h3>` + (h.length ? `<ul>${h.map(r => `<li>${r.discarded ? `<b>${esc(r.lot)}</b> descartada: ${r.by === me ? 'pagaste' : esc(pname(r.by)) + ' pagó'} ${r.amount} 🐐` : `<b>${esc(r.lot)}</b> para ${esc(pobj(r.by))} por ${r.amount} 🐐`}${r.vetoed ? ` <span class="small muted">(vetado: ${esc(pname(r.vetoed))})</span>` : ''}</li>`).join('')}</ul>` : '<p class="small muted" style="margin:0">Todavía no se ha subastado a nadie.</p>');
+}
+
+/* ============ Intercambio ============ */
+function realName(id) { const p = S.players.find(x => x.id === id); return p ? p.name + (id === me ? ' (tú)' : '') : '?'; }
+function teamOf(id) { const p = S.players.find(x => x.id === id); return p ? p.team : []; }
+function updateSwap() {
+  const s = S.swap, box = $('#swapbox'); if (!s || !box) return;
+  const info = s.info;
+  let summary = '';
+  if (info) {
+    const g = `<b>${esc(info.gave)}</b>`, t = `<b>${esc(info.got)}</b>`;
+    summary = info.by === me ? `Has usado el intercambio con <b>${esc(pname(info.target))}</b>: le das ${g} y te llevas ${t}.`
+      : info.target === me ? `<b>${esc(pname(info.by))}</b> ha usado el intercambio contigo: te da ${g} y se lleva ${t}.`
+      : `<b>${esc(pname(info.by))}</b> ha usado el intercambio con <b>${esc(pname(info.target))}</b>: le da ${g} y se lleva ${t}.`;
+    summary = `<p style="margin:0 0 6px">${summary}</p>`;
+  }
+  if (s.stage === 'spinning') {
+    if (lastSwapSpinKey === s.spin.key) return;
+    lastSwapSpinKey = s.spin.key;
+    const n = s.spin.names.length, seg = 360 / n, target = 360 * 6 - (s.spin.index + 0.5) * seg + (Math.random() - 0.5) * seg * 0.6;
+    box.innerHTML = `<div class="panel" style="text-align:center">${summary}<p class="muted" style="margin:0">${info.target === me ? 'Estás girando' : esc(pname(info.target)) + ' gira'} la ruleta de las que sobraron…</p>
+      <div class="wheel-wrap"><div class="pointer"></div><div class="wheel-rot" id="swrot">${wheelSVG(s.spin.names)}</div></div></div>`;
+    const rot = $('#swrot'); const left = remaining(s.spin.endsAt) - 250;
+    if (left <= 300) rot.style.transform = `rotate(${target}deg)`;
+    else requestAnimationFrame(() => requestAnimationFrame(() => { rot.style.transition = `transform ${left}ms cubic-bezier(.12,.67,.12,1)`; rot.style.transform = `rotate(${target}deg)`; }));
+    return;
+  }
+  lastSwapSpinKey = null;
+  if (s.stage === 'secret') {
+    const sw = MINE.swap;
+    if (sw && !sw.skipped) {
+      const mine = teamOf(me);
+      if (sw.offer) {
+        const o = sw.offer;
+        box.innerHTML = `<div class="vetobox"><h3>🔄 Te ha tocado…</h3>
+          <p style="margin:6px 0 0">Del equipo de <b>${esc(pname(o.target))}</b> te tocaría <b style="font-size:1.2em">${esc(o.theirs)}</b>.</p>
+          <p class="muted" style="margin:4px 0 0">¿Cambias a tu ${esc(o.mine)} por ${esc(o.theirs)}?</p>
+          <div class="vbtns"><button data-act="swap-yes">Sí, cambiar</button><button class="skip" data-act="swap-no">No, me quedo como estoy</button></div>
+          <p class="small muted" style="margin:8px 0 0">Tienes <b data-deadline="${s.deadline}"></b> s para decidir.</p></div>`;
+      } else if (!mine.length) {
+        box.innerHTML = `<div class="vetobox"><h3>🔄 Derecho de intercambio</h3><p class="muted" style="margin:4px 0 0">No tienes a nadie en tu equipo, así que no puedes usarlo.</p></div>`;
+      } else {
+        const rivals = S.players.filter(p => p.id !== me && p.team.length);
+        box.innerHTML = `<div class="vetobox"><h3>🔄 Tienes el derecho de intercambio</h3>
+          <p class="muted" style="margin:4px 0 0">Elige a quién de los tuyos quieres cambiar y con qué equipo. La persona del otro equipo te tocará al azar y luego decides si cambias o no.</p>
+          <p style="margin:12px 0 0;font-weight:800">1. ¿A quién de tu equipo cambias?</p>
+          <div class="selchips">${mine.map((n, i) => `<button data-act="swap-mine" data-i="${i}" aria-pressed="${swapSel.mine === n}">${esc(n)}</button>`).join('')}</div>
+          <p style="margin:10px 0 0;font-weight:800">2. ¿Con qué equipo?</p>
+          <div class="selchips">${rivals.map(p => `<button data-act="swap-target" data-id="${esc(p.id)}" aria-pressed="${swapSel.target === p.id}">${esc(p.name)}</button>`).join('')}</div>
+          <div class="vbtns"><button data-act="swap-pick" ${swapSel.mine && swapSel.target ? '' : 'disabled'}>Ver a quién me toca</button><button class="skip" data-act="swap-skip">No quiero usarlo</button></div>
+          <p class="small muted" style="margin:8px 0 0">Quedan <b data-deadline="${s.deadline}"></b> s.</p></div>`;
+      }
+    } else {
+      box.innerHTML = `<div class="panel lot"><p class="kicker">Equipos cerrados</p><div class="name">🔄 Intercambio</div>
+        <p class="muted" style="margin:0">Si alguien tiene el derecho de intercambio, está decidiendo ahora. Esperad <b data-deadline="${s.deadline}"></b> s.</p></div>`;
+    }
+  } else if (s.stage === 'respin-ask') {
+    const lefts = S.leftovers || [];
+    box.innerHTML = info.target === me ? `<div class="vetobox"><h3>🎡 ¿Giras la ruleta?</h3>${summary}
+        <p class="muted" style="margin:4px 0 0">Puedes girar la ruleta entre las personas que sobraron (${lefts.map(esc).join(', ')}). La que salga sustituye a ${esc(info.gave)}, sin vuelta atrás.</p>
+        <div class="vbtns"><button data-act="respin-go">Girar la ruleta</button><button class="skip" data-act="respin-no">Me quedo con ${esc(info.gave)}</button></div>
+        <p class="small muted" style="margin:8px 0 0">Tienes <b data-deadline="${s.deadline}"></b> s.</p></div>`
+      : `<div class="panel">${summary}<p class="muted" style="margin:0">${esc(pname(info.target))} decide si gira la ruleta entre las que sobraron… <b data-deadline="${s.deadline}"></b> s</p></div>`;
+  } else if (s.stage === 'done') {
+    let r = '';
+    if (info && info.respin) r = info.respin.declined ? `<p style="margin:0 0 6px">${esc(info.target === me ? 'Te quedas' : pname(info.target) + ' se queda')} con ${esc(info.gave)}.</p>` : `<p style="margin:0 0 6px">${info.target === me ? 'Has girado' : esc(pname(info.target)) + ' ha girado'} la ruleta: sale <b>${esc(info.respin.out)}</b> y entra <b>${esc(info.respin.in)}</b>.</p>`;
+    box.innerHTML = `<div class="panel">${info ? summary + r : '<p style="margin:0 0 6px">No ha habido intercambio.</p>'}<p class="muted" style="margin:0">El ranking empieza en <b data-deadline="${s.deadline}"></b> s.</p></div>`;
+  }
+  updateTimers();
+}
+
+/* ============ Chat ============ */
+function renderChat() {
+  const log = $('#chatlog'); if (!log) return;
+  log.innerHTML = chatLog.length ? chatLog.map(m => `<div class="msg ${m.by === me ? 'me' : ''}"><span class="who">${esc(m.by === me ? 'Tú' : (S ? pname(m.by) : ''))}</span>${esc(m.text)}</div>`).join('')
+    : '<p class="muted small" style="text-align:center;margin:auto">Todavía no ha escrito nadie. Rompe el hielo.</p>';
+  log.scrollTop = log.scrollHeight;
+}
+function sendChat(text) {
+  const inp = $('#chatin');
+  text = (text != null ? text : inp.value).trim();
+  if (!text) return;
+  if (wsSend({ t: 'chat', text })) { if (inp && text === inp.value.trim()) inp.value = ''; }
+  else toast('Sin conexión. Reconectando…');
+}
+function showPeek(m) {
+  const p = $('#peek'); if (!p) return;
+  p.textContent = `${pname(m.by)}: ${m.text}`; p.classList.add('on');
+  clearTimeout(peekT); peekT = setTimeout(() => p.classList.remove('on'), 3500);
+}
+function openChat(open) {
+  chatOpen = open; $('#chat').hidden = !open;
+  if (open) { unread = 0; $('#peek').classList.remove('on'); renderChat(); }
+  renderTop();
 }
 
 /* ============ Eventos ============ */
@@ -609,12 +838,25 @@ function onClick(e) {
       else (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast('Enlace copiado'), () => toast('Código: ' + S.code));
       break;
     }
-    case 'vote-clear': {
-      const id = b.dataset.id; delete voteDraft[id];
-      const row = b.closest('.rate'); row.classList.add('unset'); row.querySelector('.rate-val').textContent = '—'; b.hidden = true;
-      break;
+    case 'chat-open': openChat(true); break;
+    case 'chat-close': openChat(false); break;
+    case 'chat-send': sendChat(); break;
+    case 'chat-phrase': sendChat(PHRASES[+b.dataset.i]); break;
+    case 'veto': send({ t: 'veto', target: b.dataset.id }); break;
+    case 'swap-mine': swapSel.mine = teamOf(me)[+b.dataset.i]; updateSwap(); break;
+    case 'swap-target': swapSel.target = b.dataset.id; updateSwap(); break;
+    case 'swap-pick': send({ t: 'swap-pick', mine: swapSel.mine, target: swapSel.target }); break;
+    case 'swap-skip': if (confirm('¿Seguro que no quieres usar el intercambio?')) send({ t: 'swap-skip' }); break;
+    case 'swap-yes': send({ t: 'swap-decide', accept: true }); break;
+    case 'swap-no': send({ t: 'swap-decide', accept: false }); break;
+    case 'respin-go': send({ t: 'respin', go: true }); break;
+    case 'respin-no': send({ t: 'respin', go: false }); break;
+    case 'rk-up': case 'rk-down': {
+      const i = +b.dataset.i, j = act === 'rk-up' ? i - 1 : i + 1;
+      if (j < 0 || j >= voteOrder.length) break;
+      [voteOrder[i], voteOrder[j]] = [voteOrder[j], voteOrder[i]]; renderRank(); break;
     }
-    case 'vote-submit': send({ t: 'vote', g: voteDraft }); break;
+    case 'vote-submit': send({ t: 'vote', order: voteOrder }); break;
     case 'bid-minus': bidAmount--; updateAction(); break;
     case 'bid-plus': bidAmount++; updateAction(); break;
     case 'bid-max': bidAmount = sMax(myPlayer()); updateAction(); break;
@@ -624,9 +866,7 @@ function onClick(e) {
 }
 function onInput(e) {
   const t = e.target;
-  if (t.dataset.vote !== undefined) {
-    voteDraft[t.dataset.vote] = +t.value;
-    const row = t.closest('.rate'); row.classList.remove('unset'); row.querySelector('.rate-val').textContent = t.value; row.querySelector('[data-act=vote-clear]').hidden = false;
+  if (false) {
   } else if (t.id === 'bid-input') {
     const v = parseInt(t.value); if (!isNaN(v)) bidAmount = v; syncBidButton();
   } else if (isHost() && ['cfg-people', 'cfg-team', 'cfg-goats', 'cfg-turn'].includes(t.id)) {
